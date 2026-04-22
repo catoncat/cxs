@@ -1,6 +1,6 @@
 ---
 name: cxs
-description: "用 cxs 对 Codex session 日志做渐进式检索：find -> read-range -> read-page。用于用户说之前、上次、前几天、昨天、我记得我配过、我试过、我们讨论过、翻一下之前的 session、找那次我跑通的命令、之前那个 codex 对话、以前 debug 过的问题、历史对话、codex 历史、session 历史，或者需要在 ~/.codex/sessions 里定位一段对话、但又不想把整批 JSONL 拉进来读。不是用来做当前仓库代码搜索、读当前文件、查外部文档、总结今天提交或收尾当前会话。Also triggers on English: 'last time I', 'earlier session', 'did we already', 'I remember configuring', 'previous codex chat', 'search my codex history'."
+description: "用 cxs 对 Codex session 日志做渐进式检索：find -> read-range -> read-page。Requires local cxs CLI in PATH or CXS_BIN. 用于用户说之前、上次、前几天、昨天、我记得我配过、我试过、我们讨论过、翻一下之前的 session、找那次我跑通的命令、之前那个 codex 对话、以前 debug 过的问题、历史对话、codex 历史、session 历史，或者需要在 ~/.codex/sessions 里定位一段对话、但又不想把整批 JSONL 拉进来读。不是用来做当前仓库代码搜索、读当前文件、查外部文档、总结今天提交或收尾当前会话。Also triggers on English: 'last time I', 'earlier session', 'did we already', 'I remember configuring', 'previous codex chat', 'search my codex history'."
 ---
 
 # cxs
