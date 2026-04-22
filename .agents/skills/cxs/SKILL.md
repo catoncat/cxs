@@ -9,55 +9,21 @@ description: "用 cxs 对 Codex session 日志做渐进式检索：find -> read-
 
 ## 安装
 
-推荐用 `npx skills add` 安装这个 skill：
-
-```bash
-npx skills add catoncat/cxs --skill cxs -g -a codex -y
-```
-
-也可以先预览仓库里的 skill：
-
-```bash
-npx skills add catoncat/cxs --list
-```
-
-## CLI 前置安装
-
-这个 skill 依赖 `cxs` CLI。本生态里的常见做法是：
-
-- `npx skills add ...` 负责安装 skill 本身
-- 外部 CLI / SDK / 凭证 / 本地工具 由 skill 自己说明前置安装流程
-
-也就是说，这个 skill 应该包含 `cxs` CLI 的安装说明，但不会由 `skills` CLI 代替你安装 `cxs`。
-
-当前最稳的安装方式：
-
-1. clone 仓库
-2. 安装依赖
-3. 让 `cxs` 可执行
-4. 再安装 skill
-
-示例：
+先准备 `cxs` CLI，再装 skill：
 
 ```bash
 git clone https://github.com/catoncat/cxs.git
 cd cxs
 bun install
-
-# 方式 A：直接配置环境变量
 export CXS_BIN="$PWD/bin/cxs"
-
-# 方式 B：放进 PATH（按你的 shell 自己处理）
-chmod +x "$PWD/bin/cxs"
-```
-
-然后再装 skill：
-
-```bash
 npx skills add catoncat/cxs --skill cxs -g -a codex -y
 ```
 
-如果后续这个仓库再提供独立 npm/bun 发布形态，可以把上面这段替换成更短的 CLI 安装命令；在那之前，这就是公开仓库里最清晰、最不误导的做法。
+只想看仓库里的 skill 时：
+
+```bash
+npx skills add catoncat/cxs --list
+```
 
 ## 路径前提
 

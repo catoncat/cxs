@@ -200,12 +200,7 @@ npx skills add catoncat/cxs --skill cxs -g -a codex -y
 npx skills add catoncat/cxs --list
 ```
 
-推荐顺序：
-
-1. 先安装 / 配置 `cxs` CLI
-2. 再用 `npx skills add` 安装 skill
-
-最稳的本地方式：
+先准备 `cxs` CLI，再安装 skill：
 
 ```bash
 git clone https://github.com/catoncat/cxs.git
@@ -217,5 +212,4 @@ npx skills add catoncat/cxs --skill cxs -g -a codex -y
 
 注意：
 
-- `npx skills add` 只安装 skill，不负责安装外部 CLI
 - 最稳的做法是先让 `cxs` 命令可执行，或设置 `CXS_BIN=/absolute/path/to/bin/cxs`
