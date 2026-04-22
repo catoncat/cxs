@@ -35,6 +35,15 @@
 bun install
 ```
 
+## CLI Install Guide
+
+```bash
+git clone https://github.com/catoncat/cxs.git
+cd cxs
+bun install
+export CXS_BIN="$PWD/bin/cxs"
+```
+
 要求：
 
 - Bun `>= 1.3`
@@ -200,15 +209,9 @@ npx skills add catoncat/cxs --skill cxs -g -a codex -y
 npx skills add catoncat/cxs --list
 ```
 
-先准备 `cxs` CLI，再安装 skill：
+CLI install guide:
 
-```bash
-git clone https://github.com/catoncat/cxs.git
-cd cxs
-bun install
-export CXS_BIN="$PWD/bin/cxs"
-npx skills add catoncat/cxs --skill cxs -g -a codex -y
-```
+`https://github.com/catoncat/cxs#cli-install-guide`
 
 注意：
 
