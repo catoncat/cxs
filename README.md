@@ -181,3 +181,41 @@ bun run ./eval/compare-eval-batches.ts data/cxs-eval/<before-batch> data/cxs-eva
 - 项目规则见 [AGENTS.md](AGENTS.md)
 - 协作说明见 [CONTRIBUTING.md](CONTRIBUTING.md)
 - 当前公开目标是“可接手、可验证、可继续演进”的源码仓库，不承诺 npm 发布流程稳定
+
+## 配套 Skill
+
+仓库内自带一个项目共享 skill：
+
+- `.agents/skills/cxs`
+
+推荐用 `npx skills add` 安装，而不是手动复制：
+
+```bash
+npx skills add catoncat/cxs --skill cxs -g -a codex -y
+```
+
+如果只想先看仓库里有哪些 skill：
+
+```bash
+npx skills add catoncat/cxs --list
+```
+
+推荐顺序：
+
+1. 先安装 / 配置 `cxs` CLI
+2. 再用 `npx skills add` 安装 skill
+
+最稳的本地方式：
+
+```bash
+git clone https://github.com/catoncat/cxs.git
+cd cxs
+bun install
+export CXS_BIN="$PWD/bin/cxs"
+npx skills add catoncat/cxs --skill cxs -g -a codex -y
+```
+
+注意：
+
+- `npx skills add` 只安装 skill，不负责安装外部 CLI
+- 最稳的做法是先让 `cxs` 命令可执行，或设置 `CXS_BIN=/absolute/path/to/bin/cxs`

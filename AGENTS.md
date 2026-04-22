@@ -45,6 +45,23 @@
 - `docs/` 里的文档要服务后续 agent 直接接手，而不是保留调研过程痕迹
 - 任何涉及“当前已实现什么”的文档，都必须先对齐代码和测试
 
+## 项目共享 Skill
+
+仓库内维护项目共享 skill：
+
+- `.agents/skills/cxs`
+
+对外推荐安装方式：
+
+```bash
+npx skills add catoncat/cxs --skill cxs -g -a codex -y
+```
+
+注意这个 skill 不会自动安装 `cxs` CLI 本体。默认约定：
+
+- 优先使用 `CXS_BIN`
+- 未设置时回退到 `PATH` 里的 `cxs`
+
 ## 默认验证
 
 涉及实现或文档真相变更时，至少做与改动直接相关的验证：
