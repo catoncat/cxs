@@ -1,0 +1,194 @@
+#!/usr/bin/env bun
+
+import { Command } from "commander";
+import { DEFAULT_DB_PATH, resolveCodexDir } from "./env";
+import {
+  printFindResults,
+  printReadPage,
+  printReadRangeResult,
+  printSessionList,
+  printStats,
+  printSyncSummary,
+} from "./format";
+import { SyncError, syncSessions } from "./indexer";
+import {
+  collectStats,
+  findSessions,
+  getMessagePage,
+  getMessageRange,
+  listSessionSummaries,
+} from "./query";
+import type { SessionListSort } from "./types";
+
+const program = new Command();
+
+program
+  .name("cxs")
+  .description("Codex sessions 渐进式检索 CLI")
+  .version("0.1.0");
+
+program
+  .command("sync")
+  .description("扫描并同步本地 Codex sessions 到 SQLite 索引")
+  .option("--root <dir>", "覆盖默认 sessions 根目录")
+  .option("--db <path>", "覆盖默认数据库路径", DEFAULT_DB_PATH)
+  .option("--best-effort", "即使部分文件失败也继续写入可成功部分")
+  .option("--json", "输出 JSON")
+  .action(async (options) => {
+    try {
+      const summary = await syncSessions({
+        dbPath: options.db,
+        rootDir: resolveCodexDir(options.root),
+        bestEffort: options.bestEffort,
+      });
+      if (options.json) {
+        console.log(JSON.stringify(summary, null, 2));
+        return;
+      }
+      printSyncSummary(summary);
+    } catch (error) {
+      if (error instanceof SyncError) {
+        if (options.json) {
+          console.error(JSON.stringify(error.summary, null, 2));
+        } else {
+          printSyncSummary(error.summary);
+        }
+        process.exitCode = 1;
+        return;
+      }
+      throw error;
+    }
+  });
+
+program
+  .command("find <query>")
+  .description("搜索相关 session，返回最小必要命中")
+  .option("-n, --limit <n>", "返回条数", "10")
+  .option("--db <path>", "覆盖默认数据库路径", DEFAULT_DB_PATH)
+  .option("--json", "输出 JSON")
+  .action((query, options) => {
+    const limit = parsePositiveInt(options.limit, 10);
+    const result = findSessions(options.db, query, limit);
+    if (options.json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    printFindResults(result.query, result.results);
+  });
+
+program
+  .command("read-range <sessionUuid>")
+  .description("围绕命中点读取局部上下文；必须显式传 session_uuid")
+  .option("--seq <n>", "显式指定锚点 seq")
+  .option("--query <query>", "用 query 在该 session 内重新定位命中点")
+  .option("--before <n>", "前文条数", "2")
+  .option("--after <n>", "后文条数", "2")
+  .option("--db <path>", "覆盖默认数据库路径", DEFAULT_DB_PATH)
+  .option("--json", "输出 JSON")
+  .action((sessionUuid, options) => {
+    const result = getMessageRange(options.db, sessionUuid, {
+      seq: optionalInt(options.seq),
+      query: options.query,
+      before: parsePositiveInt(options.before, 2),
+      after: parsePositiveInt(options.after, 2),
+    });
+    if (options.json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    printReadRangeResult(
+      result.session,
+      result.anchorSeq,
+      result.messages,
+      result.rangeStartSeq,
+      result.rangeEndSeq,
+    );
+  });
+
+program
+  .command("read-page <sessionUuid>")
+  .description("顺序分页读取某个 session 的消息")
+  .option("--offset <n>", "起始 offset", "0")
+  .option("--limit <n>", "页大小", "20")
+  .option("--db <path>", "覆盖默认数据库路径", DEFAULT_DB_PATH)
+  .option("--json", "输出 JSON")
+  .action((sessionUuid, options) => {
+    const result = getMessagePage(
+      options.db,
+      sessionUuid,
+      parseNonNegativeInt(options.offset, 0),
+      parsePositiveInt(options.limit, 20),
+    );
+    if (options.json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    printReadPage(
+      result.session,
+      result.offset,
+      result.limit,
+      result.totalCount,
+      result.hasMore,
+      result.messages,
+    );
+  });
+
+program
+  .command("list")
+  .description("列出已索引的 session（不做全文检索）")
+  .option("--cwd <needle>", "cwd 子串过滤（大小写不敏感）")
+  .option("--since <iso>", "只看 ended_at >= 指定时间的 session")
+  .option("--sort <key>", "排序键：ended|started|messages", "ended")
+  .option("-n, --limit <n>", "返回条数", "20")
+  .option("--db <path>", "覆盖默认数据库路径", DEFAULT_DB_PATH)
+  .option("--json", "输出 JSON")
+  .action((options) => {
+    const sort = normalizeListSort(options.sort);
+    const result = listSessionSummaries(options.db, {
+      cwd: options.cwd,
+      since: options.since,
+      sort,
+      limit: parsePositiveInt(options.limit, 20),
+    });
+    if (options.json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    printSessionList(result.results);
+  });
+
+program
+  .command("stats")
+  .description("展示索引状态统计")
+  .option("--db <path>", "覆盖默认数据库路径", DEFAULT_DB_PATH)
+  .option("--json", "输出 JSON")
+  .action((options) => {
+    const summary = collectStats(options.db);
+    if (options.json) {
+      console.log(JSON.stringify(summary, null, 2));
+      return;
+    }
+    printStats(summary);
+  });
+
+program.parse();
+
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function parseNonNegativeInt(value: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function optionalInt(value: string | undefined): number | undefined {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function normalizeListSort(value: string | undefined): SessionListSort {
+  if (value === "started" || value === "messages") return value;
+  return "ended";
+}

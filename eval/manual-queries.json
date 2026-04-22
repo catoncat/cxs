@@ -1,0 +1,128 @@
+[
+  {
+    "id": "hammerspoon",
+    "query": "hammerspoon",
+    "intent": "查 Hammerspoon 相关 session",
+    "category": "broad-single-term",
+    "expectedTitleOrSummaryContains": "hammerspoon"
+  },
+  {
+    "id": "clipboard",
+    "query": "clipboard",
+    "intent": "查剪贴板工具和 clipboard 相关 session",
+    "category": "broad-single-term",
+    "expectedTitleOrSummaryContains": "clipboard"
+  },
+  {
+    "id": "doubao-ime",
+    "query": "豆包输入法",
+    "intent": "查豆包输入法 / Doubao IME 相关 session",
+    "category": "cjk-phrase",
+    "expectedSnippetContains": "输入"
+  },
+  {
+    "id": "sb",
+    "query": "sb",
+    "intent": "查 sb / sing-box 相关 session",
+    "category": "broad-short-term",
+    "expectedTitleOrSummaryContains": "sb"
+  },
+  {
+    "id": "dns-watcher",
+    "query": "dns watcher",
+    "intent": "查 dns watcher 相关 session",
+    "category": "exact-multi-term",
+    "expectedTitleOrSummaryContains": "dns watcher"
+  },
+  {
+    "id": "envchain",
+    "query": "envchain",
+    "intent": "查 envchain / Keychain 注入相关 session",
+    "category": "broad-single-term",
+    "expectedTitleOrSummaryContains": "envchain"
+  },
+  {
+    "id": "fly-deploy",
+    "query": "fly deploy",
+    "intent": "查 Fly deploy / 部署故障相关 session",
+    "category": "exact-multi-term",
+    "expectedTitleOrSummaryContains": "fly"
+  },
+  {
+    "id": "edge-tts",
+    "query": "edge tts",
+    "intent": "查 Edge TTS 相关 session",
+    "category": "exact-multi-term",
+    "expectedTitleOrSummaryContains": "edge-tts"
+  },
+  {
+    "id": "cursor",
+    "query": "cursor",
+    "intent": "查 Cursor / ccursor 相关 session",
+    "category": "broad-single-term",
+    "expectedTitleOrSummaryContains": "cursor"
+  },
+  {
+    "id": "worktree",
+    "query": "worktree",
+    "intent": "查 worktree / branch closeout 相关 session",
+    "category": "broad-single-term",
+    "expectedTitleOrSummaryContains": "worktree"
+  },
+  {
+    "id": "cjk-mix-deploy",
+    "query": "部署 health check",
+    "intent": "中英混合：查部署时的 health check 相关",
+    "category": "cjk-english-mix",
+    "expectedSnippetContains": "health"
+  },
+  {
+    "id": "path-like",
+    "query": "src/background.ts",
+    "intent": "路径样式 query",
+    "category": "path-like",
+    "expectedCwdContains": "browser-brain-loop"
+  },
+  {
+    "id": "cjk-short",
+    "query": "回滚",
+    "intent": "纯中文短语",
+    "category": "cjk-phrase",
+    "expectedTitleOrSummaryContains": "回滚"
+  },
+  {
+    "id": "tailscale",
+    "query": "tailscale",
+    "intent": "查 Tailscale 网络相关",
+    "category": "broad-single-term",
+    "expectedTitleOrSummaryContains": "tailscale"
+  },
+  {
+    "id": "mcp-server",
+    "query": "mcp server",
+    "intent": "查 MCP server 搭建",
+    "category": "exact-multi-term",
+    "expectedTitleOrSummaryContains": "mcp"
+  },
+  {
+    "id": "cjk-recon",
+    "query": "调试 dns",
+    "intent": "中英混合：调试 DNS 问题",
+    "category": "cjk-english-mix",
+    "expectedSnippetContains": "dns"
+  },
+  {
+    "id": "numeric",
+    "query": "500 health check",
+    "intent": "带数字的故障 query",
+    "category": "numeric",
+    "expectedSnippetContains": "health"
+  },
+  {
+    "id": "bun-test",
+    "query": "bun test",
+    "intent": "查 bun test 相关",
+    "category": "exact-multi-term",
+    "expectedTitleOrSummaryContains": "bun"
+  }
+]
