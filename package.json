@@ -1,11 +1,48 @@
 {
   "name": "cxs",
-  "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Codex sessions progressive search CLI",
+  "description": "Progressive search CLI for local Codex session logs",
+  "license": "MIT",
+  "homepage": "https://github.com/catoncat/cxs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/catoncat/cxs.git"
+  },
+  "bugs": {
+    "url": "https://github.com/catoncat/cxs/issues"
+  },
+  "bin": {
+    "cxs": "./bin/cxs"
+  },
+  "files": [
+    "bin/",
+    "cli.ts",
+    "db.ts",
+    "env.ts",
+    "format.ts",
+    "indexer.ts",
+    "parser.ts",
+    "query.ts",
+    "ranking.ts",
+    "tokenize.ts",
+    "types.ts",
+    "eval/"
+  ],
+  "keywords": [
+    "codex",
+    "cli",
+    "fts",
+    "search",
+    "sqlite",
+    "session"
+  ],
+  "engines": {
+    "bun": ">=1.3.0"
+  },
   "scripts": {
     "test": "bun test",
+    "check": "bun test",
     "cxs": "bun run ./cli.ts",
     "eval:manual": "bun run ./eval/run-manual-eval.ts"
   },

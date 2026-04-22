@@ -2,6 +2,24 @@
 
 `cxs` 是一个面向本机 Codex 会话日志的渐进式检索 CLI。
 
+它的目标不是“返回整场对话全文”，而是给 agent 或人一个低噪音的读取路径：
+
+`sync -> find -> read-range/read-page`
+
+## 适用场景
+
+- 查“之前那个 session 里是怎么修的”
+- 按关键词找最近的 Codex 历史
+- 先拿候选 session，再围绕命中点局部展开
+- 给 sidecar / GUI 工具提供本地 session retrieval engine
+
+## 非目标
+
+- 不做实时 watcher / daemon / 自动 sync
+- 不做 GUI
+- 不直接绑定 live in-flight thread
+- 不返回未裁剪的全文默认输出
+
 当前命令面：
 
 - `cxs sync`
@@ -16,6 +34,12 @@
 ```bash
 bun install
 ```
+
+要求：
+
+- Bun `>= 1.3`
+- 本机可读取 `~/.codex/sessions`
+- 默认会在仓库内使用 `./data/index.sqlite` 作为索引库
 
 ## 用法
 
@@ -67,6 +91,69 @@ bun install
 ./bin/cxs stats
 ```
 
+## 快速开始
+
+首次使用建议按下面顺序：
+
+```bash
+bun install
+./bin/cxs sync
+./bin/cxs find "health check"
+./bin/cxs read-range <sessionUuid> --seq <matchSeq>
+```
+
+如果你已经知道当前项目路径，也可以先缩范围：
+
+```bash
+./bin/cxs list --cwd /Users/you/work/project --sort ended -n 10
+```
+
+## 当前实现边界
+
+当前 retrieval 主链是：
+
+`message recall -> session heuristic rerank -> read-range/read-page`
+
+已经落地的能力：
+
+- `messages_fts` 驱动的候选召回
+- `summary_text` 派生摘要
+- session 级 heuristic rerank
+- manual eval 导出与 batch compare
+
+还没落地的能力：
+
+- `summary_text` 参与 recall
+- 独立的 session/resource 级搜索面
+- 真正的 resource-level reranker
+- duplicate collapse / diversity control
+
+更完整的实现说明见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，后续路线见 [docs/ROADMAP.md](docs/ROADMAP.md)。
+
+## 常见问题
+
+### 为什么 `find` 没搜到我刚刚的 session？
+
+先看索引时间：
+
+```bash
+./bin/cxs stats --json
+```
+
+如果 `lastSyncAt` 很旧，先重新同步：
+
+```bash
+./bin/cxs sync
+```
+
+### 为什么有些中文短 query 命中不稳定？
+
+当前主召回仍以 message FTS 为主，极少数零 token CJK query 才会回退到 LIKE。短 query 本身信息量低，建议换成更长的词组或加项目上下文。
+
+### 为什么不做自动实时同步？
+
+这是刻意的产品边界。当前接受“手动触发的增量 sync”，而不是 watcher/daemon。
+
 ## 开发
 
 运行测试：
@@ -88,3 +175,9 @@ bun run eval:manual
 ```bash
 bun run ./eval/compare-eval-batches.ts data/cxs-eval/<before-batch> data/cxs-eval/<after-batch>
 ```
+
+## 开源协作
+
+- 项目规则见 [AGENTS.md](AGENTS.md)
+- 协作说明见 [CONTRIBUTING.md](CONTRIBUTING.md)
+- 当前公开目标是“可接手、可验证、可继续演进”的源码仓库，不承诺 npm 发布流程稳定
