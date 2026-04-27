@@ -36,6 +36,10 @@ export class CurrentStateDbError extends Error {
   }
 }
 
+// Hard-coded identifier list — getCurrentSessions's SELECT references each of
+// these. Keep this in sync with the SELECT below.
+const THREADS_REQUIRED_COLUMNS = ["id", "rollout_path", "cwd", "title", "updated_at_ms"] as const;
+
 export function findSessions(
   dbPath: string,
   query: string,
@@ -123,6 +127,12 @@ export function getCurrentSessions(
     if (!tableExists(db, "threads")) {
       throw new CurrentStateDbError(
         `unexpected codex state db schema: missing 'threads' table at ${stateDbPath}`,
+      );
+    }
+    const missingColumns = findMissingColumns(db, "threads", THREADS_REQUIRED_COLUMNS);
+    if (missingColumns.length > 0) {
+      throw new CurrentStateDbError(
+        `unexpected codex state db schema: 'threads' missing column(s) ${missingColumns.join(", ")} at ${stateDbPath}`,
       );
     }
     const candidates = db
@@ -347,6 +357,17 @@ function tableExists(db: Database, tableName: string): boolean {
     .query<unknown, [string]>("SELECT 1 FROM sqlite_master WHERE name = ? LIMIT 1")
     .get(tableName);
   return Boolean(row);
+}
+
+// Why: PRAGMA table_info doesn't accept bound parameters, so callers MUST
+// pass a hard-coded identifier. Returns required columns that the table is
+// missing, in input order; empty array means schema is good.
+function findMissingColumns(db: Database, tableName: string, required: readonly string[]): string[] {
+  const rows = db
+    .query<{ name: string }, []>(`PRAGMA table_info(${tableName})`)
+    .all() as Array<{ name: string }>;
+  const present = new Set(rows.map((row) => row.name));
+  return required.filter((column) => !present.has(column));
 }
 
 /**

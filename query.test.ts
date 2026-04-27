@@ -81,6 +81,34 @@ describe("cxs retrieval flow", () => {
     expect((caught as Error).message).toContain("threads");
   });
 
+  test("current throws CurrentStateDbError when 'threads' is missing required columns", () => {
+    const base = mkdtempSync(join(tmpdir(), "cxs-current-cols-"));
+    tempDirs.push(base);
+    const stateDbPath = join(base, "state.sqlite");
+    const db = new Database(stateDbPath);
+    // Table exists but lacks rollout_path & updated_at_ms — simulates an
+    // upstream rename of the columns we SELECT in getCurrentSessions.
+    db.run(`
+      CREATE TABLE threads (
+        id TEXT PRIMARY KEY,
+        cwd TEXT NOT NULL,
+        title TEXT NOT NULL
+      )
+    `);
+    db.close();
+
+    let caught: unknown = null;
+    try {
+      getCurrentSessions(stateDbPath, "/tmp/project", 10);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(CurrentStateDbError);
+    const message = (caught as Error).message;
+    expect(message).toContain("rollout_path");
+    expect(message).toContain("updated_at_ms");
+  });
+
   test("sync -> find -> read-range -> read-page works on fixture sessions", async () => {
     const base = mkdtempSync(join(tmpdir(), "cxs-test-"));
     tempDirs.push(base);

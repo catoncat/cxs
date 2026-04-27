@@ -113,6 +113,32 @@ describe("cxs cli", () => {
     expect(payload.error.message).toContain("threads");
   });
 
+  test("current --json emits structured error when 'threads' is missing required columns", async () => {
+    const base = mkdtempSync(join(tmpdir(), "cxs-cli-current-cols-"));
+    tempDirs.push(base);
+    const stateDbPath = join(base, "state.sqlite");
+    const db = new Database(stateDbPath);
+    db.run(`
+      CREATE TABLE threads (
+        id TEXT PRIMARY KEY,
+        cwd TEXT NOT NULL,
+        title TEXT NOT NULL
+      )
+    `);
+    db.close();
+
+    const result = await runCli(["current", "--state-db", stateDbPath, "--json"]);
+    expect(result.exitCode).toBe(1);
+    const payload = JSON.parse(result.stdout) as {
+      error: { code: string; message: string };
+    };
+    expect(payload.error.code).toBe("state_db_unavailable");
+    expect(payload.error.message).toContain("rollout_path");
+    // Crucially, raw SQLite errors should never reach stdout — exit 1 with a
+    // structured payload is the contract.
+    expect(result.stdout).not.toContain("SQLiteError");
+  });
+
   test("find text output points to read-range", async () => {
     const base = mkdtempSync(join(tmpdir(), "cxs-cli-"));
     tempDirs.push(base);
