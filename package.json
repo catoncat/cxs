@@ -1,5 +1,5 @@
 {
-  "name": "cxs",
+  "name": "@catoncat/cxs",
   "version": "0.2.0",
   "type": "module",
   "description": "Progressive search CLI for local Codex session logs",
@@ -13,13 +13,16 @@
     "url": "https://github.com/catoncat/cxs/issues"
   },
   "bin": {
-    "cxs": "./dist/cli.js"
+    "cxs": "dist/cli.js"
   },
   "files": [
     "dist/",
     "README.md",
     "LICENSE"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "keywords": [
     "codex",
     "cli",

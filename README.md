@@ -45,10 +45,12 @@ curl -fsSL https://raw.githubusercontent.com/catoncat/cxs/main/scripts/install.s
 ### npm 全局安装(需要 Node 22+)
 
 ```bash
-npm i -g cxs
+npm i -g @catoncat/cxs
 ```
 
-约 13 MB,不含 runtime,启动快。CI / 容器场景以及已有 Node 工具链的用户首选。
+装出来的命令是 `cxs`。约 13 MB,不含 runtime,启动快。CI / 容器场景以及已有 Node 工具链的用户首选。
+
+> 包名是 scoped 的,因为 npm 上 `cxs` 已被 css-in-js 库占用。
 
 ### 从源码(开发者 / 需要 PR)
 
