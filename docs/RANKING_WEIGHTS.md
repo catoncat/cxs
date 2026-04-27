@@ -1,6 +1,6 @@
 # cxs ranking 权重说明
 
-本文是 [ranking.ts](/Users/envvar/work/repos/cxs/ranking.ts) 与 [query.ts](/Users/envvar/work/repos/cxs/query.ts) 中所有 magic constant 的“为什么是这个值”说明，受众是未来要调权重的维护者(人或 agent)。
+本文是 [ranking.ts](../ranking.ts) 与 [query.ts](../query.ts) 中所有 magic constant 的“为什么是这个值”说明，受众是未来要调权重的维护者(人或 agent)。
 
 每个权重都需要在三个层次的相对量级里活下去：
 
@@ -14,7 +14,7 @@
 
 ## SQL 列权重: `bm25(sessions_fts, 8.0, 3.0, 4.0, 1.2)`
 
-位置: [query.ts:289](/Users/envvar/work/repos/cxs/query.ts)。
+位置: [query.ts:289](../query.ts)。
 
 `sessions_fts` 的索引列顺序固定为 `(title, summary_text, compact_text, reasoning_summary_text, session_uuid)`,`session_uuid` 是 UNINDEXED,所以 bm25 的四个权重对应前四列。SQLite FTS5 的 bm25 输出是 *负数*,**值越小越好**;权重越大表示该列匹配应该被放大。
 
@@ -41,7 +41,7 @@
 
 ## scoreRow: 单 row 信号
 
-位置: [ranking.ts:166-178](/Users/envvar/work/repos/cxs/ranking.ts)。
+位置: [ranking.ts:166-178](../ranking.ts)。
 
 ```
 normalizedBm25
@@ -89,7 +89,7 @@ user-authored content 比 agent 输出多 2 分。
 
 ## scoreSession: session 级补强
 
-位置: [ranking.ts:186-197](/Users/envvar/work/repos/cxs/ranking.ts)。
+位置: [ranking.ts:186-197](../ranking.ts)。
 
 ```
 bestRowSignalScore
@@ -160,7 +160,7 @@ session 内总命中行数,clamp 到 6,乘 1.5(满分 9)。
 
 ## recencyDecay: 时间衰减
 
-位置: [ranking.ts:205-210](/Users/envvar/work/repos/cxs/ranking.ts)。
+位置: [ranking.ts:205-210](../ranking.ts)。
 
 ```
 max(0, 18 - days_since_ended * 0.15)
@@ -197,7 +197,7 @@ max(0, 18 - days_since_ended * 0.15)
 
 ## shouldUseDisplayRow: message 优先于 session
 
-位置: [ranking.ts:148-157](/Users/envvar/work/repos/cxs/ranking.ts)。
+位置: [ranking.ts:148-157](../ranking.ts)。
 
 ```ts
 if (candidate.matchSource === "message" && current.matchSource !== "message") return true;
@@ -210,7 +210,7 @@ return candidateScore > currentScore;
 **为什么这样选**:
 
 - `bestRow` 决定 ranking,`bestDisplayRow` 决定用户在 `cxs find` 列表里看到的 snippet/seq/role/timestamp。两个故意拆开。
-- 一个 session 可能同时有 `messages_fts` row(score 偏低,但来自真实消息)和 `sessions_fts` row(score 偏高,但只命中标题/摘要)。如果 display 跟着分数走,用户会看到 `matchSeq=null` + 一个 session-level snippet,然后 `cxs read-range <uuid> --start 0` 时找不到锚点,被迫回退 read-page。
+- 一个 session 可能同时有 `messages_fts` row(score 偏低,但来自真实消息)和 `sessions_fts` row(score 偏高,但只命中标题/摘要)。如果 display 跟着分数走,用户会看到 `matchSeq=null` + 一个 session-level snippet,而 `cxs read-range <uuid>` 必须显式带 `--seq` 或 `--query` 才能锚定,空 `matchSeq` 直接断了直接重锚链路,被迫回退 `cxs read-page` 翻全 session。
 - 显示层的真正决策是 **read-range 可用性**:有 anchor 的 row(message)永远优先,即便 session-level row 分数更高。
 
 **改动它会影响什么**:
