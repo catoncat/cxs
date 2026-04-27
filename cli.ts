@@ -15,6 +15,7 @@ import {
 import { SyncError, syncSessions } from "./indexer";
 import {
   collectStats,
+  CurrentStateDbError,
   findSessions,
   getCurrentSessions,
   getMessagePage,
@@ -40,16 +41,24 @@ program
   .option("--json", "输出 JSON")
   .action((options) => {
     const cwd = options.cwd ?? process.cwd();
-    if (!existsSync(options.stateDb)) {
-      throw new Error(`state db not found: ${options.stateDb}`);
+    const jsonMode = Boolean(options.json);
+    try {
+      if (!existsSync(options.stateDb)) {
+        throw new CurrentStateDbError(`state db not found: ${options.stateDb}`);
+      }
+      const result = getCurrentSessions(options.stateDb, cwd, parsePositiveInt(options.limit, 100));
+      if (jsonMode) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      printCurrentSessions(result.cwd, result.candidates);
+    } catch (error) {
+      if (error instanceof CurrentStateDbError) {
+        emitCurrentError(error, jsonMode);
+        return;
+      }
+      throw error;
     }
-
-    const result = getCurrentSessions(options.stateDb, cwd, parsePositiveInt(options.limit, 100));
-    if (options.json) {
-      console.log(JSON.stringify(result, null, 2));
-      return;
-    }
-    printCurrentSessions(result.cwd, result.candidates);
   });
 
 program
@@ -225,4 +234,19 @@ function optionalInt(value: string | undefined): number | undefined {
 function normalizeListSort(value: string | undefined): SessionListSort {
   if (value === "started" || value === "messages") return value;
   return "ended";
+}
+
+function emitCurrentError(error: CurrentStateDbError, jsonMode: boolean): void {
+  if (jsonMode) {
+    console.log(
+      JSON.stringify(
+        { error: { code: "state_db_unavailable", message: error.message } },
+        null,
+        2,
+      ),
+    );
+  } else {
+    console.error(error.message);
+  }
+  process.exitCode = 1;
 }

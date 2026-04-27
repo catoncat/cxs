@@ -31,6 +31,18 @@ export function openReadDb(dbPath: string): Database {
   return db;
 }
 
+// Why: callers used to do `const db = openReadDb(...); ... db.close();` which
+// leaks the connection if work in between throws. Wrapping in try/finally at
+// every callsite is noise — fold it once.
+export function withReadDb<T>(dbPath: string, fn: (db: Database) => T): T {
+  const db = openReadDb(dbPath);
+  try {
+    return fn(db);
+  } finally {
+    db.close();
+  }
+}
+
 export function openWriteDb(dbPath: string): Database {
   const db = new Database(dbPath);
   db.run(`PRAGMA busy_timeout=${BUSY_TIMEOUT_MS}`);

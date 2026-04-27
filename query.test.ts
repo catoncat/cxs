@@ -8,7 +8,14 @@ import { pathToFileURL } from "node:url";
 import { openReadDb, openWriteDb, replaceSession } from "./db";
 import { INDEX_VERSION } from "./env";
 import { syncSessions } from "./indexer";
-import { classifyQueryProfile, findSessions, getCurrentSessions, getMessagePage, getMessageRange } from "./query";
+import {
+  classifyQueryProfile,
+  CurrentStateDbError,
+  findSessions,
+  getCurrentSessions,
+  getMessagePage,
+  getMessageRange,
+} from "./query";
 
 const tempDirs: string[] = [];
 
@@ -54,6 +61,24 @@ describe("cxs retrieval flow", () => {
       "11111111-1111-4111-8111-111111111111",
     ]);
     expect(result.candidates[0]?.filePath).toBe("/tmp/b.jsonl");
+  });
+
+  test("current throws CurrentStateDbError when state db lacks 'threads' table", () => {
+    const base = mkdtempSync(join(tmpdir(), "cxs-current-schema-"));
+    tempDirs.push(base);
+    const stateDbPath = join(base, "state.sqlite");
+    const db = new Database(stateDbPath);
+    db.run("CREATE TABLE other (id INTEGER PRIMARY KEY)");
+    db.close();
+
+    let caught: unknown = null;
+    try {
+      getCurrentSessions(stateDbPath, "/tmp/project", 10);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(CurrentStateDbError);
+    expect((caught as Error).message).toContain("threads");
   });
 
   test("sync -> find -> read-range -> read-page works on fixture sessions", async () => {

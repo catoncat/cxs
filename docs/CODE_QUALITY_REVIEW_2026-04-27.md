@@ -85,9 +85,11 @@ sync -> find -> read-range/read-page
 
 ## 主要问题与风险
 
-### P0-1：缺少真正的 TypeScript 类型检查
+### P0-1：缺少真正的 TypeScript 类型检查 ✅ 已修复
 
-`package.json` 中 `check` 当前只是 `bun test`，没有 `tsc --noEmit`。Bun 可以执行 TypeScript，但不等于有完整类型检查。
+> 状态：已在 commit `be75d87 chore: add TypeScript check` 修复（写本报告之后）。`tsconfig.json` 已就绪、`check` 已改为 `tsc --noEmit && bun test`。
+
+原文（保留作为背景）：`package.json` 中 `check` 当前只是 `bun test`，没有 `tsc --noEmit`。Bun 可以执行 TypeScript，但不等于有完整类型检查。
 
 当前类型已经开始变复杂，例如：
 

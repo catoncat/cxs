@@ -8,7 +8,7 @@ import {
   getStatsCounts,
   getTopCwds,
   listSessions,
-  openReadDb,
+  withReadDb,
 } from "./db";
 import { INDEX_VERSION } from "./env";
 import { classifyQueryProfile, rerankHits } from "./ranking";
@@ -26,20 +26,30 @@ import type {
 export { classifyQueryProfile } from "./ranking";
 type SqlParams = SQLQueryBindings[];
 
+// Why: Codex state db lives outside cxs's control — its schema can drift
+// across upstream releases. CLI translates this into a structured --json
+// error instead of leaking SQLite's raw exception.
+export class CurrentStateDbError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CurrentStateDbError";
+  }
+}
+
 export function findSessions(
   dbPath: string,
   query: string,
   limit: number,
 ): { query: string; results: FindResult[] } {
-  const db = openReadDb(dbPath);
-  const recallLimit = Math.max(limit * 12, 50);
-  const rawRows = [
-    ...searchMessageHits(db, query, recallLimit),
-    ...searchSessionHits(db, query, recallLimit),
-  ];
-  const results = rerankHits(rawRows, query, limit);
-  db.close();
-  return { query, results };
+  return withReadDb(dbPath, (db) => {
+    const recallLimit = Math.max(limit * 12, 50);
+    const rawRows = [
+      ...searchMessageHits(db, query, recallLimit),
+      ...searchSessionHits(db, query, recallLimit),
+    ];
+    const results = rerankHits(rawRows, query, limit);
+    return { query, results };
+  });
 }
 
 export function getMessageRange(
@@ -53,16 +63,16 @@ export function getMessageRange(
   rangeEndSeq: number;
   messages: ReturnType<typeof getMessagesForRange>;
 } {
-  const db = openReadDb(dbPath);
-  const anchorSeq = resolveAnchorSeq(db, sessionUuid, options.seq, options.query);
-  const session = getSessionRecord(db, sessionUuid);
-  if (!session) throw new Error(`session not found: ${sessionUuid}`);
+  return withReadDb(dbPath, (db) => {
+    const anchorSeq = resolveAnchorSeq(db, sessionUuid, options.seq, options.query);
+    const session = getSessionRecord(db, sessionUuid);
+    if (!session) throw new Error(`session not found: ${sessionUuid}`);
 
-  const rangeStartSeq = Math.max(0, anchorSeq - options.before);
-  const rangeEndSeq = anchorSeq + options.after;
-  const messages = getMessagesForRange(db, sessionUuid, rangeStartSeq, rangeEndSeq);
-  db.close();
-  return { session, anchorSeq, rangeStartSeq, rangeEndSeq, messages };
+    const rangeStartSeq = Math.max(0, anchorSeq - options.before);
+    const rangeEndSeq = anchorSeq + options.after;
+    const messages = getMessagesForRange(db, sessionUuid, rangeStartSeq, rangeEndSeq);
+    return { session, anchorSeq, rangeStartSeq, rangeEndSeq, messages };
+  });
 }
 
 export function getMessagePage(
@@ -78,24 +88,24 @@ export function getMessagePage(
   hasMore: boolean;
   messages: ReturnType<typeof getMessagesForPage>;
 } {
-  const db = openReadDb(dbPath);
-  const session = getSessionRecord(db, sessionUuid);
-  if (!session) throw new Error(`session not found: ${sessionUuid}`);
-  const messages = getMessagesForPage(db, sessionUuid, offset, limit);
-  const totalCount = session.messageCount;
-  const hasMore = offset + messages.length < totalCount;
-  db.close();
-  return { session, offset, limit, totalCount, hasMore, messages };
+  return withReadDb(dbPath, (db) => {
+    const session = getSessionRecord(db, sessionUuid);
+    if (!session) throw new Error(`session not found: ${sessionUuid}`);
+    const messages = getMessagesForPage(db, sessionUuid, offset, limit);
+    const totalCount = session.messageCount;
+    const hasMore = offset + messages.length < totalCount;
+    return { session, offset, limit, totalCount, hasMore, messages };
+  });
 }
 
 export function listSessionSummaries(
   dbPath: string,
   query: SessionListQuery,
 ): { query: SessionListQuery; results: SessionListEntry[] } {
-  const db = openReadDb(dbPath);
-  const results = listSessions(db, query);
-  db.close();
-  return { query, results };
+  return withReadDb(dbPath, (db) => {
+    const results = listSessions(db, query);
+    return { query, results };
+  });
 }
 
 export function getCurrentSessions(
@@ -110,6 +120,11 @@ export function getCurrentSessions(
 
   const db = new Database(stateDbPath, { readonly: true });
   try {
+    if (!tableExists(db, "threads")) {
+      throw new CurrentStateDbError(
+        `unexpected codex state db schema: missing 'threads' table at ${stateDbPath}`,
+      );
+    }
     const candidates = db
       .query<CurrentSessionCandidate, [string, number]>(`
         SELECT
@@ -131,10 +146,10 @@ export function getCurrentSessions(
 }
 
 export function collectStats(dbPath: string): StatsSummary {
-  const db = openReadDb(dbPath);
-  const counts = getStatsCounts(db);
-  const topCwds = getTopCwds(db, 10);
-  db.close();
+  const { counts, topCwds } = withReadDb(dbPath, (db) => ({
+    counts: getStatsCounts(db),
+    topCwds: getTopCwds(db, 10),
+  }));
 
   let dbSizeBytes = 0;
   try {

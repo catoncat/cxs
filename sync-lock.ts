@@ -47,8 +47,10 @@ async function acquireSyncLock(lockPath: string): Promise<() => void> {
 
     const existing = readLockInfo(lockPath);
     if (existing && !isProcessAlive(existing.pid)) {
-      removeLockIfPresent(lockPath);
-      continue;
+      // If tryRemoveStaleLock returns false, another process took over the
+      // lock between our read and our cleanup attempt — fall through to the
+      // poll/timeout branch instead of clobbering its lock file.
+      if (tryRemoveStaleLock(lockPath, existing)) continue;
     }
 
     if (Date.now() >= deadline) {
@@ -64,6 +66,20 @@ function releaseSyncLock(lockPath: string, lockInfo: SyncLockInfo): void {
   if (!existing) return;
   if (existing.pid !== lockInfo.pid || existing.createdAt !== lockInfo.createdAt) return;
   removeLockIfPresent(lockPath);
+}
+
+// Why: avoid TOCTOU when clearing a stale lock. Between our `existing` read
+// and the actual `rmSync` call, another sync process can re-create the lock.
+// Re-read and compare pid+createdAt: only delete the lock file if it's still
+// the same one we judged dead. Exported for unit tests.
+export function tryRemoveStaleLock(lockPath: string, expected: SyncLockInfo): boolean {
+  const reChecked = readLockInfo(lockPath);
+  if (!reChecked) return true;
+  if (reChecked.pid !== expected.pid || reChecked.createdAt !== expected.createdAt) {
+    return false;
+  }
+  removeLockIfPresent(lockPath);
+  return true;
 }
 
 function readLockInfo(lockPath: string): SyncLockInfo | null {
