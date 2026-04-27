@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "vitest";
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -35,7 +35,7 @@ describe("syncSessions", () => {
     expect(failure.summary.errorDetails[0]?.message.length).toBeGreaterThan(0);
 
     const db = openReadDb(dbPath);
-    const row = db.query("SELECT COUNT(*) AS count FROM sessions").get() as { count: number };
+    const row = db.prepare("SELECT COUNT(*) AS count FROM sessions").get() as { count: number };
     db.close();
     expect(row.count).toBe(0);
 
@@ -54,7 +54,7 @@ describe("syncSessions", () => {
     expect(summary.errorDetails[0]?.filePath).toBe(badFilePath);
 
     const db = openReadDb(dbPath);
-    const row = db.query("SELECT COUNT(*) AS count FROM sessions").get() as { count: number };
+    const row = db.prepare("SELECT COUNT(*) AS count FROM sessions").get() as { count: number };
     db.close();
     expect(row.count).toBe(1);
   });
@@ -186,7 +186,7 @@ function holdSyncLock(
     const child = spawn(
       process.execPath,
       ["--eval", script, lockPath, String(holdMs)],
-      { cwd: import.meta.dir, stdio: ["ignore", "pipe", "pipe"] },
+      { cwd: import.meta.dirname, stdio: ["ignore", "pipe", "pipe"] },
     );
 
     let settled = false;

@@ -13,22 +13,12 @@
     "url": "https://github.com/catoncat/cxs/issues"
   },
   "bin": {
-    "cxs": "./bin/cxs"
+    "cxs": "./dist/cli.js"
   },
   "files": [
-    "bin/",
-    "cli.ts",
-    "db.ts",
-    "env.ts",
-    "format.ts",
-    "indexer.ts",
-    "parser.ts",
-    "query.ts",
-    "ranking.ts",
-    "sync-lock.ts",
-    "tokenize.ts",
-    "types.ts",
-    "eval/"
+    "dist/",
+    "README.md",
+    "LICENSE"
   ],
   "keywords": [
     "codex",
@@ -39,21 +29,28 @@
     "session"
   ],
   "engines": {
-    "bun": ">=1.3.0"
+    "node": ">=22"
   },
   "scripts": {
-    "test": "bun test",
-    "check": "tsc --noEmit && bun test",
-    "cxs": "bun run ./cli.ts",
-    "eval:manual": "bun run ./eval/run-manual-eval.ts",
-    "eval:perf": "bun run ./eval/perf-bench.ts"
+    "build": "esbuild cli.ts --bundle --platform=node --target=node22 --format=esm --external:better-sqlite3 --external:chalk --external:commander --outfile=dist/cli.js && node scripts/post-build.mjs",
+    "prepublishOnly": "npm run build",
+    "test": "vitest run",
+    "check": "tsc --noEmit && vitest run",
+    "cxs": "tsx ./cli.ts",
+    "eval:manual": "tsx ./eval/run-manual-eval.ts",
+    "eval:perf": "tsx ./eval/perf-bench.ts"
   },
   "dependencies": {
+    "better-sqlite3": "^12.9.0",
     "chalk": "^5.6.2",
     "commander": "^14.0.3"
   },
   "devDependencies": {
-    "@types/bun": "^1.3.13",
-    "typescript": "^6.0.3"
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.6.0",
+    "esbuild": "^0.28.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.5"
   }
 }

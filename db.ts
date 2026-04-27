@@ -1,6 +1,5 @@
 import { existsSync } from "node:fs";
-import { Database } from "bun:sqlite";
-import type { SQLQueryBindings } from "bun:sqlite";
+import Database from "better-sqlite3";
 import { tokenizedText } from "./tokenize";
 import type {
   CwdCount,
@@ -11,30 +10,27 @@ import type {
   SessionRecord,
 } from "./types";
 
-const CUSTOM_SQLITE = "/opt/homebrew/opt/sqlite/lib/libsqlite3.dylib";
+type Db = Database.Database;
+type SqlParams = unknown[];
+
 const BUSY_TIMEOUT_MS = 5000;
-type SqlParams = SQLQueryBindings[];
 
-if (existsSync(CUSTOM_SQLITE)) {
-  Database.setCustomSQLite(CUSTOM_SQLITE);
-}
-
-export function openReadDb(dbPath: string): Database {
+export function openReadDb(dbPath: string): Db {
   if (!existsSync(dbPath)) {
     throw new Error(`index not found: ${dbPath}; run cxs sync first`);
   }
 
   const db = new Database(dbPath, { readonly: true });
-  db.run(`PRAGMA busy_timeout=${BUSY_TIMEOUT_MS}`);
-  db.run("PRAGMA query_only=ON");
-  db.run("PRAGMA temp_store=MEMORY");
+  db.pragma(`busy_timeout = ${BUSY_TIMEOUT_MS}`);
+  db.pragma("query_only = ON");
+  db.pragma("temp_store = MEMORY");
   return db;
 }
 
 // Why: callers used to do `const db = openReadDb(...); ... db.close();` which
 // leaks the connection if work in between throws. Wrapping in try/finally at
 // every callsite is noise — fold it once.
-export function withReadDb<T>(dbPath: string, fn: (db: Database) => T): T {
+export function withReadDb<T>(dbPath: string, fn: (db: Db) => T): T {
   const db = openReadDb(dbPath);
   try {
     return fn(db);
@@ -43,19 +39,19 @@ export function withReadDb<T>(dbPath: string, fn: (db: Database) => T): T {
   }
 }
 
-export function openWriteDb(dbPath: string): Database {
+export function openWriteDb(dbPath: string): Db {
   const db = new Database(dbPath);
-  db.run(`PRAGMA busy_timeout=${BUSY_TIMEOUT_MS}`);
-  db.run("PRAGMA journal_mode=WAL");
-  db.run("PRAGMA synchronous=NORMAL");
-  db.run("PRAGMA temp_store=MEMORY");
-  db.run("PRAGMA foreign_keys=ON");
+  db.pragma(`busy_timeout = ${BUSY_TIMEOUT_MS}`);
+  db.pragma("journal_mode = WAL");
+  db.pragma("synchronous = NORMAL");
+  db.pragma("temp_store = MEMORY");
+  db.pragma("foreign_keys = ON");
   ensureSchema(db);
   return db;
 }
 
-function ensureSchema(db: Database): void {
-  db.run(`
+function ensureSchema(db: Db): void {
+  db.exec(`
     CREATE TABLE IF NOT EXISTS sessions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       session_uuid TEXT NOT NULL UNIQUE,
@@ -80,7 +76,7 @@ function ensureSchema(db: Database): void {
   ensureTextColumn(db, "sessions", "compact_text");
   ensureTextColumn(db, "sessions", "reasoning_summary_text");
 
-  db.run(`
+  db.exec(`
     CREATE TABLE IF NOT EXISTS messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -94,10 +90,10 @@ function ensureSchema(db: Database): void {
     )
   `);
 
-  db.run("CREATE INDEX IF NOT EXISTS idx_messages_session_seq ON messages(session_uuid, seq)");
-  db.run("CREATE INDEX IF NOT EXISTS idx_sessions_started_at ON sessions(started_at DESC)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_messages_session_seq ON messages(session_uuid, seq)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_sessions_started_at ON sessions(started_at DESC)");
 
-  db.run(`
+  db.exec(`
     CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
       content_text,
       session_uuid UNINDEXED,
@@ -113,29 +109,29 @@ function ensureSchema(db: Database): void {
   dropLegacyTrigramTable(db);
 }
 
-function dropLegacyTrigramTable(db: Database): void {
+function dropLegacyTrigramTable(db: Db): void {
   // cxs <= v2 shipped a second FTS5 virtual table for CJK trigram search.
   // The hybrid bigram+Segmenter tokenizer in tokenize.ts replaces it, so
   // drop the old table and its shadow rows if they still exist.
-  db.run("DROP TABLE IF EXISTS messages_fts_trigram");
+  db.exec("DROP TABLE IF EXISTS messages_fts_trigram");
 }
 
-function ensureSessionsFtsTable(db: Database): void {
+function ensureSessionsFtsTable(db: Db): void {
   const existing = db
-    .query("SELECT 1 FROM sqlite_master WHERE name = 'sessions_fts' LIMIT 1")
+    .prepare("SELECT 1 FROM sqlite_master WHERE name = 'sessions_fts' LIMIT 1")
     .get();
 
   if (existing) {
     const columns = db
-      .query("PRAGMA table_info(sessions_fts)")
+      .prepare("PRAGMA table_info(sessions_fts)")
       .all() as Array<{ name: string }>;
     const names = new Set(columns.map((column) => column.name));
     if (!names.has("compact_text") || !names.has("reasoning_summary_text")) {
-      db.run("DROP TABLE sessions_fts");
+      db.exec("DROP TABLE sessions_fts");
     }
   }
 
-  db.run(`
+  db.exec(`
     CREATE VIRTUAL TABLE IF NOT EXISTS sessions_fts USING fts5(
       title,
       summary_text,
@@ -148,11 +144,11 @@ function ensureSessionsFtsTable(db: Database): void {
 }
 
 export function getIndexedSessionMeta(
-  db: Database,
+  db: Db,
   filePath: string,
 ): { rawFileMtime: number; rawFileSize: number; indexVersion: string } | null {
   const row = db
-    .query<{ rawFileMtime: number; rawFileSize: number; indexVersion: string }, [string]>(`
+    .prepare<[string], { rawFileMtime: number; rawFileSize: number; indexVersion: string }>(`
       SELECT raw_file_mtime AS rawFileMtime, raw_file_size AS rawFileSize, index_version AS indexVersion
       FROM sessions
       WHERE file_path = ?
@@ -160,29 +156,29 @@ export function getIndexedSessionMeta(
     `)
     .get(filePath) as
     | { rawFileMtime: number; rawFileSize: number; indexVersion: string }
-    | null;
+    | undefined;
 
   return row ?? null;
 }
 
-export function deleteSessionByFilePath(db: Database, filePath: string): void {
+export function deleteSessionByFilePath(db: Db, filePath: string): void {
   const row = db
-    .query<{ sessionUuid: string }, [string]>("SELECT session_uuid AS sessionUuid FROM sessions WHERE file_path = ? LIMIT 1")
-    .get(filePath) as { sessionUuid: string } | null;
+    .prepare<[string], { sessionUuid: string }>("SELECT session_uuid AS sessionUuid FROM sessions WHERE file_path = ? LIMIT 1")
+    .get(filePath) as { sessionUuid: string } | undefined;
 
   if (!row) return;
   deleteSessionByUuid(db, row.sessionUuid);
 }
 
-function deleteSessionByUuid(db: Database, sessionUuid: string): void {
-  db.run("DELETE FROM sessions_fts WHERE session_uuid = ?", [sessionUuid]);
-  db.run("DELETE FROM messages_fts WHERE session_uuid = ?", [sessionUuid]);
-  db.run("DELETE FROM messages WHERE session_uuid = ?", [sessionUuid]);
-  db.run("DELETE FROM sessions WHERE session_uuid = ?", [sessionUuid]);
+function deleteSessionByUuid(db: Db, sessionUuid: string): void {
+  db.prepare("DELETE FROM sessions_fts WHERE session_uuid = ?").run(sessionUuid);
+  db.prepare("DELETE FROM messages_fts WHERE session_uuid = ?").run(sessionUuid);
+  db.prepare("DELETE FROM messages WHERE session_uuid = ?").run(sessionUuid);
+  db.prepare("DELETE FROM sessions WHERE session_uuid = ?").run(sessionUuid);
 }
 
 export function replaceSession(
-  db: Database,
+  db: Db,
   session: ParsedSession,
   rawFileMtime: number,
   rawFileSize: number,
@@ -190,11 +186,11 @@ export function replaceSession(
 ): void {
   const tx = db.transaction(() => {
     const existing = db
-      .query<{ id: number }, [string, string]>("SELECT id FROM sessions WHERE session_uuid = ? OR file_path = ? LIMIT 1")
-      .get(session.sessionUuid, session.filePath) as { id: number } | null;
+      .prepare<[string, string], { id: number }>("SELECT id FROM sessions WHERE session_uuid = ? OR file_path = ? LIMIT 1")
+      .get(session.sessionUuid, session.filePath) as { id: number } | undefined;
 
     if (existing) {
-      db.run(
+      db.prepare(
         `
           UPDATE sessions
           SET session_uuid = ?, file_path = ?, title = ?, summary_text = ?, compact_text = ?, reasoning_summary_text = ?,
@@ -202,26 +198,25 @@ export function replaceSession(
               message_count = ?, raw_file_mtime = ?, raw_file_size = ?, index_version = ?, updated_at = CURRENT_TIMESTAMP
           WHERE id = ?
         `,
-        [
-          session.sessionUuid,
-          session.filePath,
-          session.title,
-          session.summaryText,
-          session.compactText ?? "",
-          session.reasoningSummaryText ?? "",
-          session.cwd,
-          session.model,
-          session.startedAt,
-          session.endedAt,
-          session.messages.length,
-          rawFileMtime,
-          rawFileSize,
-          indexVersion,
-          existing.id,
-        ],
+      ).run(
+        session.sessionUuid,
+        session.filePath,
+        session.title,
+        session.summaryText,
+        session.compactText ?? "",
+        session.reasoningSummaryText ?? "",
+        session.cwd,
+        session.model,
+        session.startedAt,
+        session.endedAt,
+        session.messages.length,
+        rawFileMtime,
+        rawFileSize,
+        indexVersion,
+        existing.id,
       );
     } else {
-      db.run(
+      db.prepare(
         `
           INSERT INTO sessions (
             session_uuid, file_path, title, summary_text, compact_text, reasoning_summary_text,
@@ -229,53 +224,51 @@ export function replaceSession(
             message_count, raw_file_mtime, raw_file_size, index_version
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
-        [
-          session.sessionUuid,
-          session.filePath,
-          session.title,
-          session.summaryText,
-          session.compactText ?? "",
-          session.reasoningSummaryText ?? "",
-          session.cwd,
-          session.model,
-          session.startedAt,
-          session.endedAt,
-          session.messages.length,
-          rawFileMtime,
-          rawFileSize,
-          indexVersion,
-        ],
+      ).run(
+        session.sessionUuid,
+        session.filePath,
+        session.title,
+        session.summaryText,
+        session.compactText ?? "",
+        session.reasoningSummaryText ?? "",
+        session.cwd,
+        session.model,
+        session.startedAt,
+        session.endedAt,
+        session.messages.length,
+        rawFileMtime,
+        rawFileSize,
+        indexVersion,
       );
     }
 
     const sessionRow = db
-      .query<{ id: number }, [string]>("SELECT id FROM sessions WHERE session_uuid = ? LIMIT 1")
+      .prepare<[string], { id: number }>("SELECT id FROM sessions WHERE session_uuid = ? LIMIT 1")
       .get(session.sessionUuid) as { id: number };
 
-    db.run("DELETE FROM messages_fts WHERE session_uuid = ?", [session.sessionUuid]);
-    db.run("DELETE FROM messages WHERE session_uuid = ?", [session.sessionUuid]);
-    db.run("DELETE FROM sessions_fts WHERE rowid = ? OR session_uuid = ?", [sessionRow.id, session.sessionUuid]);
+    db.prepare("DELETE FROM messages_fts WHERE session_uuid = ?").run(session.sessionUuid);
+    db.prepare("DELETE FROM messages WHERE session_uuid = ?").run(session.sessionUuid);
+    db.prepare("DELETE FROM sessions_fts WHERE rowid = ? OR session_uuid = ?").run(sessionRow.id, session.sessionUuid);
 
-    db.run(
+    db.prepare(
       `
         INSERT INTO sessions_fts(rowid, title, summary_text, compact_text, reasoning_summary_text, session_uuid)
         VALUES (?, ?, ?, ?, ?, ?)
       `,
-      [
-        sessionRow.id,
-        tokenizedText(session.title),
-        tokenizedText(session.summaryText),
-        tokenizedText(session.compactText ?? ""),
-        tokenizedText(session.reasoningSummaryText ?? ""),
-        session.sessionUuid,
-      ],
+    ).run(
+      sessionRow.id,
+      tokenizedText(session.title),
+      tokenizedText(session.summaryText),
+      tokenizedText(session.compactText ?? ""),
+      tokenizedText(session.reasoningSummaryText ?? ""),
+      session.sessionUuid,
     );
 
-    const messageStmt = db.prepare<unknown, [number, string, number, string, string, string, string]>(`
+    const messageStmt = db.prepare<[number, string, number, string, string, string, string]>(`
       INSERT INTO messages (session_id, session_uuid, seq, role, content_text, timestamp, source_kind)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
-    const ftsStmt = db.prepare<unknown, [number, string, string, number, string, string]>(`
+    const ftsStmt = db.prepare<[number, string, string, number, string, string]>(`
       INSERT INTO messages_fts(rowid, content_text, session_uuid, seq, role, timestamp)
       VALUES (?, ?, ?, ?, ?, ?)
     `);
@@ -308,9 +301,9 @@ export function replaceSession(
   tx();
 }
 
-export function getSessionRecord(db: Database, sessionUuid: string): SessionRecord | null {
+export function getSessionRecord(db: Db, sessionUuid: string): SessionRecord | null {
   const row = db
-    .query<SessionRecord & { filePath: string }, [string]>(`
+    .prepare<[string], SessionRecord & { filePath: string }>(`
       SELECT
         session_uuid AS sessionUuid,
         file_path AS filePath,
@@ -325,29 +318,29 @@ export function getSessionRecord(db: Database, sessionUuid: string): SessionReco
       WHERE session_uuid = ?
       LIMIT 1
     `)
-    .get(sessionUuid) as (SessionRecord & { filePath: string }) | null;
+    .get(sessionUuid) as (SessionRecord & { filePath: string }) | undefined;
 
   if (!row) return null;
   return row;
 }
 
-function ensureTextColumn(db: Database, tableName: string, columnName: string): void {
+function ensureTextColumn(db: Db, tableName: string, columnName: string): void {
   const columns = db
-    .query(`PRAGMA table_info(${tableName})`)
+    .prepare(`PRAGMA table_info(${tableName})`)
     .all() as Array<{ name?: string }>;
 
   if (columns.some((column) => column.name === columnName)) return;
-  db.run(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} TEXT NOT NULL DEFAULT ''`);
+  db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} TEXT NOT NULL DEFAULT ''`);
 }
 
 export function getMessagesForRange(
-  db: Database,
+  db: Db,
   sessionUuid: string,
   startSeq: number,
   endSeq: number,
 ): MessageRecord[] {
   return db
-    .query<MessageRecord, [string, number, number]>(`
+    .prepare<[string, number, number], MessageRecord>(`
       SELECT
         session_uuid AS sessionUuid,
         seq,
@@ -363,13 +356,13 @@ export function getMessagesForRange(
 }
 
 export function getMessagesForPage(
-  db: Database,
+  db: Db,
   sessionUuid: string,
   offset: number,
   limit: number,
 ): MessageRecord[] {
   return db
-    .query<MessageRecord, [string, number, number]>(`
+    .prepare<[string, number, number], MessageRecord>(`
       SELECT
         session_uuid AS sessionUuid,
         seq,
@@ -385,7 +378,7 @@ export function getMessagesForPage(
     .all(sessionUuid, limit, offset) as MessageRecord[];
 }
 
-export function listSessions(db: Database, query: SessionListQuery): SessionListEntry[] {
+export function listSessions(db: Db, query: SessionListQuery): SessionListEntry[] {
   const conditions: string[] = [];
   const params: SqlParams = [];
   if (query.cwd) {
@@ -409,7 +402,7 @@ export function listSessions(db: Database, query: SessionListQuery): SessionList
   params.push(query.limit);
 
   return db
-    .query<SessionListEntry, typeof params>(`
+    .prepare<typeof params, SessionListEntry>(`
       SELECT
         session_uuid AS sessionUuid,
         title,
@@ -426,7 +419,7 @@ export function listSessions(db: Database, query: SessionListQuery): SessionList
     .all(...params) as SessionListEntry[];
 }
 
-export function getStatsCounts(db: Database): {
+export function getStatsCounts(db: Db): {
   sessionCount: number;
   messageCount: number;
   earliestStartedAt: string | null;
@@ -434,7 +427,7 @@ export function getStatsCounts(db: Database): {
   lastSyncAt: string | null;
 } {
   const row = db
-    .query(`
+    .prepare(`
       SELECT
         COUNT(*) AS sessionCount,
         COALESCE(SUM(message_count), 0) AS messageCount,
@@ -453,9 +446,9 @@ export function getStatsCounts(db: Database): {
   return row;
 }
 
-export function getTopCwds(db: Database, limit: number): CwdCount[] {
+export function getTopCwds(db: Db, limit: number): CwdCount[] {
   return db
-    .query<CwdCount, [number]>(`
+    .prepare<[number], CwdCount>(`
       SELECT cwd, COUNT(*) AS count
       FROM sessions
       WHERE cwd != ''

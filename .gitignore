@@ -1,5 +1,7 @@
 node_modules/
+dist/
 data/
+*.tgz
 .claude/
 .entire/
 .intent/

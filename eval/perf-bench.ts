@@ -1,9 +1,10 @@
-#!/usr/bin/env bun
+#!/usr/bin/env -S node --import tsx
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { existsSync } from "node:fs";
+import { spawn as childSpawn } from "node:child_process";
 
 interface PerQueryRecord {
   query: string;
@@ -40,7 +41,7 @@ const BENCH_QUERIES: string[] = [
 ];
 
 const RUNS_PER_QUERY = 5; // 第 1 次作为 warmup,统计后 4 次
-const ROOT = resolve(import.meta.dir, "..");
+const ROOT = resolve(import.meta.dirname, "..");
 const OUT_BASE = resolve(ROOT, "data", "cxs-perf");
 
 interface CliArgs {
@@ -85,14 +86,25 @@ interface RunResult {
 
 async function run(cmd: string[]): Promise<RunResult> {
   const t0 = performance.now();
-  const proc = Bun.spawn(cmd, { cwd: ROOT, stdout: "pipe", stderr: "pipe" });
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
+  const result = await spawnAndCapture(cmd, ROOT);
   const ms = performance.now() - t0;
-  return { stdout, stderr, exitCode, ms };
+  return { ...result, ms };
+}
+
+function spawnAndCapture(cmd: string[], cwd: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  return new Promise((resolve, reject) => {
+    const proc = childSpawn(cmd[0]!, cmd.slice(1), { cwd, stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    proc.stdout!.setEncoding("utf8");
+    proc.stderr!.setEncoding("utf8");
+    proc.stdout!.on("data", (chunk: string) => { stdout += chunk; });
+    proc.stderr!.on("data", (chunk: string) => { stderr += chunk; });
+    proc.on("error", reject);
+    proc.on("close", (code) => {
+      resolve({ stdout, stderr, exitCode: code ?? 0 });
+    });
+  });
 }
 
 async function runOrThrow(cmd: string[]): Promise<RunResult> {
@@ -138,7 +150,7 @@ if (!args.jsonOnly) {
 }
 
 // 1. sync
-const syncRun = await runOrThrow(["./bin/cxs", "sync", "--db", args.db, "--root", args.root, "--json"]);
+const syncRun = await runOrThrow([process.execPath, "--import", "tsx", "cli.ts", "sync", "--db", args.db, "--root", args.root, "--json"]);
 const syncMs = syncRun.ms;
 let sessionCount = 0;
 try {
@@ -153,7 +165,7 @@ const perQuery: PerQueryRecord[] = [];
 for (const q of BENCH_QUERIES) {
   const samplesAll: number[] = [];
   for (let i = 0; i < RUNS_PER_QUERY; i++) {
-    const r = await runOrThrow(["./bin/cxs", "find", q, "--db", args.db, "--limit", "10", "--json"]);
+    const r = await runOrThrow([process.execPath, "--import", "tsx", "cli.ts", "find", q, "--db", args.db, "--limit", "10", "--json"]);
     samplesAll.push(r.ms);
   }
   // 丢弃首次 warmup
@@ -169,7 +181,7 @@ for (const q of BENCH_QUERIES) {
 }
 
 // 3. stats -> dbSizeBytes
-const statsRun = await runOrThrow(["./bin/cxs", "stats", "--db", args.db, "--json"]);
+const statsRun = await runOrThrow([process.execPath, "--import", "tsx", "cli.ts", "stats", "--db", args.db, "--json"]);
 let dbSizeBytes = 0;
 try {
   const parsed = JSON.parse(statsRun.stdout) as { dbSizeBytes?: number; sessionCount?: number };

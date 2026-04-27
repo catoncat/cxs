@@ -1,6 +1,7 @@
-#!/usr/bin/env bun
+#!/usr/bin/env -S node --import tsx
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { spawn as childSpawn } from "node:child_process";
 import { join, resolve } from "node:path";
 import { evaluateManualQuery, type ManualQuery, type PassMark } from "./manual-eval-core";
 import type { FindResult } from "../types";
@@ -10,8 +11,8 @@ interface FindOutput {
   results: FindResult[];
 }
 
-const ROOT = resolve(import.meta.dir, "..");
-const QUERY_FILE = resolve(import.meta.dir, "manual-queries.json");
+const ROOT = resolve(import.meta.dirname, "..");
+const QUERY_FILE = resolve(import.meta.dirname, "manual-queries.json");
 const OUT_BASE = resolve(ROOT, "data", "cxs-eval");
 
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -48,8 +49,8 @@ const perQuery: Array<{
 
 for (const [index, item] of queries.entries()) {
   const prefix = String(index + 1).padStart(2, "0");
-  const findJson = await runCommand(["./bin/cxs", "find", item.query, "--limit", "5", "--json"]);
-  const findText = await runCommand(["./bin/cxs", "find", item.query, "--limit", "5"]);
+  const findJson = await runCommand([process.execPath, "--import", "tsx", "cli.ts", "find", item.query, "--limit", "5", "--json"]);
+  const findText = await runCommand([process.execPath, "--import", "tsx", "cli.ts", "find", item.query, "--limit", "5"]);
   const findJsonPath = join(outDir, `${prefix}-${item.id}.find.json`);
   const findTxtPath = join(outDir, `${prefix}-${item.id}.find.txt`);
   writeFileSync(findJsonPath, findJson);
@@ -168,7 +169,7 @@ function buildTopContextCommand(top: FindResult): { kind: "read-range" | "read-p
     return {
       kind: "read-range",
       args: [
-        "./bin/cxs",
+        process.execPath, "--import", "tsx", "cli.ts",
         "read-range",
         top.sessionUuid,
         "--seq",
@@ -184,7 +185,7 @@ function buildTopContextCommand(top: FindResult): { kind: "read-range" | "read-p
   return {
     kind: "read-page",
     args: [
-      "./bin/cxs",
+      process.execPath, "--import", "tsx", "cli.ts",
       "read-page",
       top.sessionUuid,
       "--offset",
@@ -195,22 +196,25 @@ function buildTopContextCommand(top: FindResult): { kind: "read-range" | "read-p
   };
 }
 
-async function runCommand(args: string[]): Promise<string> {
-  const proc = Bun.spawn(args, {
-    cwd: ROOT,
-    stdout: "pipe",
-    stderr: "pipe",
+function runCommand(args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const proc = childSpawn(args[0]!, args.slice(1), {
+      cwd: ROOT,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    proc.stdout!.setEncoding("utf8");
+    proc.stderr!.setEncoding("utf8");
+    proc.stdout!.on("data", (chunk: string) => { stdout += chunk; });
+    proc.stderr!.on("data", (chunk: string) => { stderr += chunk; });
+    proc.on("error", reject);
+    proc.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`command failed: ${args.join(" ")}\n${stderr}`));
+      } else {
+        resolve(stdout);
+      }
+    });
   });
-
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-
-  if (exitCode !== 0) {
-    throw new Error(`command failed: ${args.join(" ")}\n${stderr}`);
-  }
-
-  return stdout;
 }

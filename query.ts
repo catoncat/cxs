@@ -1,5 +1,4 @@
-import { Database } from "bun:sqlite";
-import type { SQLQueryBindings } from "bun:sqlite";
+import Database from "better-sqlite3";
 import { statSync } from "node:fs";
 import {
   getMessagesForPage,
@@ -24,7 +23,8 @@ import type {
 } from "./types";
 
 export { classifyQueryProfile } from "./ranking";
-type SqlParams = SQLQueryBindings[];
+type Db = Database.Database;
+type SqlParams = unknown[];
 
 // Why: Codex state db lives outside cxs's control — its schema can drift
 // across upstream releases. CLI translates this into a structured --json
@@ -136,7 +136,7 @@ export function getCurrentSessions(
       );
     }
     const candidates = db
-      .query<CurrentSessionCandidate, [string, number]>(`
+      .prepare<[string, number], CurrentSessionCandidate>(`
         SELECT
           id AS sessionUuid,
           title,
@@ -182,7 +182,7 @@ export function collectStats(dbPath: string): StatsSummary {
 }
 
 function resolveAnchorSeq(
-  db: Database,
+  db: Db,
   sessionUuid: string,
   seq?: number,
   query?: string,
@@ -199,13 +199,13 @@ function resolveAnchorSeq(
   throw new Error("read-range requires explicit session_uuid plus either --seq or --query");
 }
 
-function searchTopHitInSession(db: Database, sessionUuid: string, query: string): FindResult | null {
+function searchTopHitInSession(db: Db, sessionUuid: string, query: string): FindResult | null {
   const rows = searchMessageHits(db, query, 20, sessionUuid);
   const result = rerankHits(rows, query, 1)[0];
   return result ?? null;
 }
 
-function searchMessageHits(db: Database, query: string, limit: number, sessionUuid?: string): RawHitRow[] {
+function searchMessageHits(db: Db, query: string, limit: number, sessionUuid?: string): RawHitRow[] {
   const normalized = query.trim();
   if (!normalized) return [];
 
@@ -222,7 +222,7 @@ function searchMessageHits(db: Database, query: string, limit: number, sessionUu
   return searchByFts(db, terms, limit, sessionUuid);
 }
 
-function searchSessionHits(db: Database, query: string, limit: number): RawHitRow[] {
+function searchSessionHits(db: Db, query: string, limit: number): RawHitRow[] {
   const normalized = query.trim();
   if (!normalized || !tableExists(db, "sessions_fts")) return [];
 
@@ -233,7 +233,7 @@ function searchSessionHits(db: Database, query: string, limit: number): RawHitRo
 }
 
 function searchByFts(
-  db: Database,
+  db: Db,
   terms: string[],
   limit: number,
   sessionUuid?: string,
@@ -249,7 +249,7 @@ function searchByFts(
   params.push(limit);
 
   return db
-    .query<RawHitRow, typeof params>(`
+    .prepare<typeof params, RawHitRow>(`
       SELECT
         s.session_uuid AS sessionUuid,
         s.title AS title,
@@ -275,14 +275,14 @@ function searchByFts(
 }
 
 function searchSessionsByFts(
-  db: Database,
+  db: Db,
   query: string,
   terms: string[],
   limit: number,
 ): RawHitRow[] {
   const matchExpr = buildFtsMatch(terms);
   const rows = db
-    .query<RawHitRow, [string, number]>(`
+    .prepare<[string, number], RawHitRow>(`
       SELECT
         s.session_uuid AS sessionUuid,
         s.title AS title,
@@ -311,7 +311,7 @@ function searchSessionsByFts(
   }));
 }
 
-function searchByLike(db: Database, query: string, limit: number, sessionUuid?: string): RawHitRow[] {
+function searchByLike(db: Db, query: string, limit: number, sessionUuid?: string): RawHitRow[] {
   const conditions = ["lower(m.content_text) LIKE ? ESCAPE '\\'"];
   const params: SqlParams = [`%${escapeLike(query.toLowerCase())}%`];
   if (sessionUuid) {
@@ -321,7 +321,7 @@ function searchByLike(db: Database, query: string, limit: number, sessionUuid?: 
   params.push(limit);
 
   const rows = db
-    .query<RawHitRow & { contentText: string }, typeof params>(`
+    .prepare<typeof params, RawHitRow & { contentText: string }>(`
       SELECT
         s.session_uuid AS sessionUuid,
         s.title AS title,
@@ -352,9 +352,9 @@ function searchByLike(db: Database, query: string, limit: number, sessionUuid?: 
   }));
 }
 
-function tableExists(db: Database, tableName: string): boolean {
+function tableExists(db: Db, tableName: string): boolean {
   const row = db
-    .query<unknown, [string]>("SELECT 1 FROM sqlite_master WHERE name = ? LIMIT 1")
+    .prepare<[string], unknown>("SELECT 1 FROM sqlite_master WHERE name = ? LIMIT 1")
     .get(tableName);
   return Boolean(row);
 }
@@ -362,9 +362,9 @@ function tableExists(db: Database, tableName: string): boolean {
 // Why: PRAGMA table_info doesn't accept bound parameters, so callers MUST
 // pass a hard-coded identifier. Returns required columns that the table is
 // missing, in input order; empty array means schema is good.
-function findMissingColumns(db: Database, tableName: string, required: readonly string[]): string[] {
+function findMissingColumns(db: Db, tableName: string, required: readonly string[]): string[] {
   const rows = db
-    .query<{ name: string }, []>(`PRAGMA table_info(${tableName})`)
+    .prepare<[], { name: string }>(`PRAGMA table_info(${tableName})`)
     .all() as Array<{ name: string }>;
   const present = new Set(rows.map((row) => row.name));
   return required.filter((column) => !present.has(column));

@@ -8,8 +8,8 @@
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "skipLibCheck": true,
-    "types": ["bun-types"]
+    "resolveJsonModule": true
   },
   "include": ["**/*.ts"],
-  "exclude": ["node_modules", "data"]
+  "exclude": ["node_modules", "dist", "data"]
 }

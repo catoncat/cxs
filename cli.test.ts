@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { Database } from "bun:sqlite";
-import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { afterEach, describe, expect, test } from "vitest";
+import Database from "better-sqlite3";
+import { spawn as childSpawn } from "node:child_process";
+import { chmodSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { INDEX_VERSION } from "./env";
@@ -23,20 +24,6 @@ afterEach(() => {
 });
 
 describe("cxs cli", () => {
-  test("bin/cxs works when invoked through a symlink", async () => {
-    const base = mkdtempSync(join(tmpdir(), "cxs-cli-symlink-"));
-    tempDirs.push(base);
-    const linkDir = join(base, "bin");
-    mkdirSync(linkDir, { recursive: true });
-    const linkPath = join(linkDir, "cxs-sim");
-    symlinkSync(join(import.meta.dir, "bin", "cxs"), linkPath);
-
-    const result = await runExecutable(linkPath, ["--version"]);
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout.trim()).toBe(packageVersion());
-  });
-
   test("help only shows current/sync/find/read-range/read-page/list/stats", async () => {
     const result = await runCli(["--help"]);
     expect(result.exitCode).toBe(0);
@@ -56,7 +43,7 @@ describe("cxs cli", () => {
     tempDirs.push(base);
     const stateDbPath = join(base, "state.sqlite");
     const db = new Database(stateDbPath);
-    db.run(`
+    db.exec(`
       CREATE TABLE threads (
         id TEXT PRIMARY KEY,
         rollout_path TEXT NOT NULL,
@@ -65,14 +52,11 @@ describe("cxs cli", () => {
         updated_at_ms INTEGER
       )
     `);
-    db.run(
+    const insertThread = db.prepare(
       "INSERT INTO threads (id, rollout_path, cwd, title, updated_at_ms) VALUES (?, ?, ?, ?, ?)",
-      ["aaaa1111-1111-4111-8111-111111111111", "/tmp/one.jsonl", "/tmp/picc", "older", 100],
     );
-    db.run(
-      "INSERT INTO threads (id, rollout_path, cwd, title, updated_at_ms) VALUES (?, ?, ?, ?, ?)",
-      ["bbbb2222-2222-4222-8222-222222222222", "/tmp/two.jsonl", "/tmp/picc", "newer", 200],
-    );
+    insertThread.run("aaaa1111-1111-4111-8111-111111111111", "/tmp/one.jsonl", "/tmp/picc", "older", 100);
+    insertThread.run("bbbb2222-2222-4222-8222-222222222222", "/tmp/two.jsonl", "/tmp/picc", "newer", 200);
     db.close();
 
     const result = await runCli([
@@ -115,7 +99,7 @@ describe("cxs cli", () => {
     tempDirs.push(base);
     const stateDbPath = join(base, "state.sqlite");
     const db = new Database(stateDbPath);
-    db.run("CREATE TABLE other (id INTEGER PRIMARY KEY)");
+    db.exec("CREATE TABLE other (id INTEGER PRIMARY KEY)");
     db.close();
 
     const result = await runCli(["current", "--state-db", stateDbPath, "--json"]);
@@ -132,7 +116,7 @@ describe("cxs cli", () => {
     tempDirs.push(base);
     const stateDbPath = join(base, "state.sqlite");
     const db = new Database(stateDbPath);
-    db.run(`
+    db.exec(`
       CREATE TABLE threads (
         id TEXT PRIMARY KEY,
         cwd TEXT NOT NULL,
@@ -351,33 +335,29 @@ function line(type: string, payload: Record<string, unknown>): string {
   });
 }
 
-function packageVersion(): string {
-  const raw = readFileSync(join(import.meta.dir, "package.json"), "utf8");
-  const parsed = JSON.parse(raw) as { version?: unknown };
-  if (typeof parsed.version !== "string") throw new Error("package.json version is missing");
-  return parsed.version;
-}
-
 async function runCli(args: string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  return runExecutable(process.execPath, ["cli.ts", ...args], import.meta.dir);
+  // Spawn cli.ts via tsx so the test works under both Bun (via bunx) and
+  // Node (via npx tsx) without requiring a build step. process.execPath
+  // resolves to the runtime that's running vitest.
+  return runExecutable(process.execPath, ["--import", "tsx", "cli.ts", ...args], import.meta.dirname);
 }
 
 async function runExecutable(
   executable: string,
   args: string[],
-  cwd = import.meta.dir,
+  cwd = import.meta.dirname,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const proc = Bun.spawn([executable, ...args], {
-    cwd,
-    stdout: "pipe",
-    stderr: "pipe",
+  return new Promise((resolve, reject) => {
+    const proc = childSpawn(executable, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    proc.stdout!.setEncoding("utf8");
+    proc.stderr!.setEncoding("utf8");
+    proc.stdout!.on("data", (chunk: string) => { stdout += chunk; });
+    proc.stderr!.on("data", (chunk: string) => { stderr += chunk; });
+    proc.on("error", reject);
+    proc.on("close", (code) => {
+      resolve({ exitCode: code ?? 0, stdout, stderr });
+    });
   });
-
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-
-  return { exitCode, stdout, stderr };
 }

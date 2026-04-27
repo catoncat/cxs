@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { Database } from "bun:sqlite";
+import { afterEach, describe, expect, test } from "vitest";
+import Database from "better-sqlite3";
 import { spawn } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -31,7 +31,7 @@ describe("cxs retrieval flow", () => {
     tempDirs.push(base);
     const stateDbPath = join(base, "state.sqlite");
     const db = new Database(stateDbPath);
-    db.run(`
+    db.exec(`
       CREATE TABLE threads (
         id TEXT PRIMARY KEY,
         rollout_path TEXT NOT NULL,
@@ -40,18 +40,12 @@ describe("cxs retrieval flow", () => {
         updated_at_ms INTEGER
       )
     `);
-    db.run(
+    const insertThread = db.prepare(
       "INSERT INTO threads (id, rollout_path, cwd, title, updated_at_ms) VALUES (?, ?, ?, ?, ?)",
-      ["11111111-1111-4111-8111-111111111111", "/tmp/a.jsonl", "/tmp/project", "older", 100],
     );
-    db.run(
-      "INSERT INTO threads (id, rollout_path, cwd, title, updated_at_ms) VALUES (?, ?, ?, ?, ?)",
-      ["22222222-2222-4222-8222-222222222222", "/tmp/b.jsonl", "/tmp/project", "newer", 200],
-    );
-    db.run(
-      "INSERT INTO threads (id, rollout_path, cwd, title, updated_at_ms) VALUES (?, ?, ?, ?, ?)",
-      ["33333333-3333-4333-8333-333333333333", "/tmp/c.jsonl", "/tmp/other", "other", 300],
-    );
+    insertThread.run("11111111-1111-4111-8111-111111111111", "/tmp/a.jsonl", "/tmp/project", "older", 100);
+    insertThread.run("22222222-2222-4222-8222-222222222222", "/tmp/b.jsonl", "/tmp/project", "newer", 200);
+    insertThread.run("33333333-3333-4333-8333-333333333333", "/tmp/c.jsonl", "/tmp/other", "other", 300);
     db.close();
 
     const result = getCurrentSessions(stateDbPath, "/tmp/project", 10);
@@ -68,7 +62,7 @@ describe("cxs retrieval flow", () => {
     tempDirs.push(base);
     const stateDbPath = join(base, "state.sqlite");
     const db = new Database(stateDbPath);
-    db.run("CREATE TABLE other (id INTEGER PRIMARY KEY)");
+    db.exec("CREATE TABLE other (id INTEGER PRIMARY KEY)");
     db.close();
 
     let caught: unknown = null;
@@ -88,7 +82,7 @@ describe("cxs retrieval flow", () => {
     const db = new Database(stateDbPath);
     // Table exists but lacks rollout_path & updated_at_ms — simulates an
     // upstream rename of the columns we SELECT in getCurrentSessions.
-    db.run(`
+    db.exec(`
       CREATE TABLE threads (
         id TEXT PRIMARY KEY,
         cwd TEXT NOT NULL,
@@ -288,7 +282,7 @@ describe("cxs retrieval flow", () => {
 
     const db = openReadDb(dbPath);
     const row = db
-      .query<{ summaryText: string }, [string]>("SELECT summary_text AS summaryText FROM sessions WHERE session_uuid = ? LIMIT 1")
+      .prepare<[string], { summaryText: string }>("SELECT summary_text AS summaryText FROM sessions WHERE session_uuid = ? LIMIT 1")
       .get("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee") as { summaryText: string } | null;
     db.close();
 
@@ -722,7 +716,7 @@ describe("cxs retrieval flow", () => {
     const summary = await syncSessions({ dbPath, rootDir: join(base, "sessions") });
     expect(summary.added).toBe(1);
 
-    const queryModuleUrl = pathToFileURL(join(import.meta.dir, "query.ts")).href;
+    const queryModuleUrl = pathToFileURL(join(import.meta.dirname, "query.ts")).href;
     const blocker = await holdExclusiveLock(dbPath, 400);
     const tasks = [
       ...Array.from({ length: 6 }, () => runReadChild(queryModuleUrl, dbPath, "find", "reverse-i-search")),
@@ -770,8 +764,8 @@ function runReadChild(
     `;
     const child = spawn(
       process.execPath,
-      ["--eval", script, queryModuleUrl, dbPath, command, query ?? ""],
-      { cwd: import.meta.dir, stdio: ["ignore", "ignore", "pipe"] },
+      ["--import", "tsx", "--eval", script, queryModuleUrl, dbPath, command, query ?? ""],
+      { cwd: import.meta.dirname, stdio: ["ignore", "ignore", "pipe"] },
     );
 
     let stderr = "";
@@ -792,22 +786,22 @@ function holdExclusiveLock(
 ): Promise<{ done: Promise<number | null> }> {
   return new Promise((resolve, reject) => {
     const script = `
-      import { Database } from "bun:sqlite";
+      import Database from "better-sqlite3";
       const [dbPath, holdMs] = process.argv.slice(1);
       const db = new Database(dbPath);
-      db.run("PRAGMA busy_timeout=5000");
-      db.run("PRAGMA locking_mode=EXCLUSIVE");
-      db.run("BEGIN EXCLUSIVE");
+      db.pragma("busy_timeout = 5000");
+      db.pragma("locking_mode = EXCLUSIVE");
+      db.exec("BEGIN EXCLUSIVE");
       console.log("locked");
       setTimeout(() => {
-        db.run("COMMIT");
+        db.exec("COMMIT");
         db.close();
       }, Number(holdMs));
     `;
     const child = spawn(
       process.execPath,
       ["--eval", script, dbPath, String(holdMs)],
-      { cwd: import.meta.dir, stdio: ["ignore", "pipe", "pipe"] },
+      { cwd: import.meta.dirname, stdio: ["ignore", "pipe", "pipe"] },
     );
 
     let settled = false;

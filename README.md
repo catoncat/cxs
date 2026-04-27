@@ -42,26 +42,33 @@ curl -fsSL https://raw.githubusercontent.com/catoncat/cxs/main/scripts/install.s
 
 支持平台:darwin-arm64 / darwin-x64 / linux-x64 / linux-arm64 / windows-x64。如果 `~/.local/bin` 不在 PATH,脚本会提示;或先 `export CXS_INSTALL_DIR=/usr/local/bin` 再跑。
 
-### 从源码(开发者 / 需要 PR / Bun 路线)
+### npm 全局安装(需要 Node 22+)
+
+```bash
+npm i -g cxs
+```
+
+约 13 MB,不含 runtime,启动快。CI / 容器场景以及已有 Node 工具链的用户首选。
+
+### 从源码(开发者 / 需要 PR)
 
 ```bash
 git clone https://github.com/catoncat/cxs.git
 cd cxs
-bun install
-export CXS_BIN="$PWD/bin/cxs"
-"$CXS_BIN" --version
-"$CXS_BIN" --help
+bun install     # Bun 是主开发 runtime
+bun run cxs --version    # 通过 tsx 直接跑 cli.ts
 ```
 
-`--help` 应列出 `sync` / `find` / `read-range` / `read-page` / `list` / `stats` / `current`。
+完整工程命令:`bun run check`(tsc + vitest)、`npm run build`(esbuild bundle 出 `dist/cli.js`)、`npm run eval:perf`(真实大库基准)。
 
 ### 首次使用建立索引
 
 ```bash
-cxs sync          # 装的是 standalone binary
-# 或 "$CXS_BIN" sync   # 装的是源码模式
+cxs sync
 cxs stats --json
 ```
+
+`--help` 应列出 `sync` / `find` / `read-range` / `read-page` / `list` / `stats` / `current`。
 
 ### 数据目录
 
@@ -74,7 +81,7 @@ export CXS_DATA_DIR="$HOME/.config/cxs"
 ### 要求
 
 - 本机可读 `~/.codex/sessions`
-- 源码模式需 Bun `>= 1.3`;binary 模式无运行时依赖
+- 三种安装路径:standalone binary 无运行时依赖;`npm i -g` 需 Node `>= 22`;源码开发需 Bun `>= 1.3`
 
 ## 用法
 
