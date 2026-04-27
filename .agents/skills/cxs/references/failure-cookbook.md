@@ -12,6 +12,7 @@
 | 用户问“最近本项目讨论了什么” | `list --cwd <current-repo> --sort ended --json` | `cwd` 先圈候选，再抽样读头尾确认主题 |
 | 用户说“在 X 项目里” | `list --cwd X --json` | 先按 cwd 缩范围，再在候选里 `read-range --query` |
 | 从其他 cwd 调用找不到 db | `stats --json` | 看 `dbPath`；必要时显式传 `--db` |
+| `current --json` 输出 `state_db_unavailable` | 看 message | Codex state DB 问题,不是 cxs 本身坏;**不要重跑 sync** |
 
 ## Find zero results but user insists it exists
 
@@ -56,6 +57,37 @@
 - `summaryText`
 - `read-page` 开头 6 到 8 条
 - `read-page` 结尾 6 到 8 条
+
+## state_db_unavailable
+
+`cxs current` 直读 Codex state SQLite,跟 cxs 自身索引无关。`--json` 模式下,所有 state DB 不可用都被收口成:
+
+```json
+{ "error": { "code": "state_db_unavailable", "message": "..." } }
+```
+
+`message` 三类:
+
+| message 关键词 | 真实原因 | 处理 |
+| --- | --- | --- |
+| `state db not found: <path>` | Codex state DB 文件不存在 | 用户没装 codex 或 `--state-db` 路径错 |
+| `missing 'threads' table` | DB 存在但缺核心表 | Codex 版本异常或库被截断 |
+| `missing column(s) ...` | `threads` 表缺必需列(`id` / `rollout_path` / `cwd` / `title` / `updated_at_ms`) | 上游 Codex 改了 schema,cxs 需要适配新版 |
+
+**关键**:这是 **Codex 端**的问题,**不要尝试 `cxs sync` 修复**——`sync` 写的是 cxs 自己的索引,跟 state DB 毫无关系。直接告知用户检查 codex 安装/版本即可。
+
+## --json error shape 速查
+
+不同子命令在 `--json` 下的 error 形状不一致,解析时按命令分流:
+
+| 命令 | error 出口 | 形状 |
+| --- | --- | --- |
+| `sync`(per-file 错) | stderr | `SyncSummary`,看 `errors / errorDetails[]` |
+| `sync`(锁超时 `SyncLockTimeoutError`) | stderr | `{ "error": <message string> }` |
+| `current`(state DB 问题) | stdout | `{ "error": { "code": "state_db_unavailable", "message": "..." } }` |
+| `find / read-range / read-page / list / stats` 异常 | 进程异常退出 | 当前未结构化,直接非零退出 |
+
+**实务**:解析前先看 exit code;非零再判断是结构化(`current`)还是字符串(`sync` 锁超时)还是 summary(`sync` per-file)。
 
 ## Schema drift
 

@@ -12,6 +12,34 @@
 export CXS_BIN=/absolute/path/to/bin/cxs
 ```
 
+## current
+
+Purpose: 直读 Codex state SQLite,按 cwd 拿候选 session,**不依赖 cxs 自己的索引**(适合 sync 没跑过或刚换机器的场景)。
+
+Notes:
+
+- 默认 state DB 路径 `~/.codex/state.sqlite`,可用 `--state-db` 覆盖
+- `--cwd` 缺省走 `process.cwd()`,直接拿当前 repo 候选
+- 顶层 `{ cwd, candidates: CurrentSessionCandidate[] }`;每个 candidate 含 `sessionUuid / title / cwd / filePath / updatedAtMs`
+- state DB 不存在/缺 `threads` 表/缺必需列时,`--json` 输出结构化 `{ error: { code: "state_db_unavailable", message } }`,exit code 1
+- 拿到 `sessionUuid` 后通常直接 `read-page` 抽样确认,不需要再走 `find`
+
+Options:
+
+| option | 说明 |
+| --- | --- |
+| `--cwd <path>` | 指定 cwd,默认 `process.cwd()` |
+| `-n, --limit <n>` | 候选条数上限,默认 100 |
+| `--state-db <path>` | 覆盖默认 Codex state SQLite 路径 |
+| `--json` | 输出 JSON |
+
+Example:
+
+```bash
+"${CXS_BIN:-cxs}" current --json
+"${CXS_BIN:-cxs}" current --cwd /Users/me/work/foo --json
+```
+
 ## sync
 
 Purpose: 扫描本地 `~/.codex/sessions` 并同步到 SQLite 索引。
