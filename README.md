@@ -30,15 +30,19 @@
 - `cxs stats`
 - `cxs current`
 
-## 安装
-
-```bash
-bun install
-```
-
 ## CLI Install Guide
 
-`cxs` 目前推荐从源码安装，适合本机工具或 agent sidecar 使用：
+### 一行安装(推荐:零依赖)
+
+从 GitHub Release 拉对应平台的 standalone binary,自动放到 `~/.local/bin/cxs`,**不需要预装 Bun 或 Node**:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/catoncat/cxs/main/scripts/install.sh | bash
+```
+
+支持平台:darwin-arm64 / darwin-x64 / linux-x64 / linux-arm64 / windows-x64。如果 `~/.local/bin` 不在 PATH,脚本会提示;或先 `export CXS_INSTALL_DIR=/usr/local/bin` 再跑。
+
+### 从源码(开发者 / 需要 PR / Bun 路线)
 
 ```bash
 git clone https://github.com/catoncat/cxs.git
@@ -49,29 +53,28 @@ export CXS_BIN="$PWD/bin/cxs"
 "$CXS_BIN" --help
 ```
 
-`--version` 应输出当前 `package.json` 里的版本号；`--help` 应显示 `sync`、`find`、`read-range`、`read-page`、`list`、`stats`、`current`。
+`--help` 应列出 `sync` / `find` / `read-range` / `read-page` / `list` / `stats` / `current`。
 
-首次使用前建立索引：
-
-```bash
-"$CXS_BIN" sync
-"$CXS_BIN" stats --json
-```
-
-如果希望直接使用 `cxs` 命令，可以把仓库里的启动脚本链接到 PATH：
+### 首次使用建立索引
 
 ```bash
-mkdir -p ~/bin
-ln -sf "$PWD/bin/cxs" ~/bin/cxs
-export PATH="$HOME/bin:$PATH"
-cxs --version
+cxs sync          # 装的是 standalone binary
+# 或 "$CXS_BIN" sync   # 装的是源码模式
+cxs stats --json
 ```
 
-要求：
+### 数据目录
 
-- Bun `>= 1.3`
-- 本机可读取 `~/.codex/sessions`
-- 默认会在仓库内使用 `./data/index.sqlite` 作为索引库
+索引默认写到 `~/.cache/cxs/index.sqlite`(XDG cache 约定),可用 `CXS_DATA_DIR` 环境变量覆盖:
+
+```bash
+export CXS_DATA_DIR="$HOME/.config/cxs"
+```
+
+### 要求
+
+- 本机可读 `~/.codex/sessions`
+- 源码模式需 Bun `>= 1.3`;binary 模式无运行时依赖
 
 ## 用法
 
