@@ -25,6 +25,7 @@
     "parser.ts",
     "query.ts",
     "ranking.ts",
+    "sync-lock.ts",
     "tokenize.ts",
     "types.ts",
     "eval/"
