@@ -20,3 +20,7 @@ Findings
 ---
 
 push
+
+---
+
+review 一下 目前 skills 的 cli 安装流程 以及 skills 的质量（能否最佳实践让 agent 高效使用我们的 cli）
