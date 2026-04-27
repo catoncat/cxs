@@ -29,8 +29,6 @@ jobs:
             asset: cxs-linux-x64
           - target: bun-linux-arm64
             asset: cxs-linux-arm64
-          - target: bun-windows-x64
-            asset: cxs-windows-x64.exe
     steps:
       - name: Checkout
         uses: actions/checkout@v4

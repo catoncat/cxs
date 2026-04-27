@@ -34,6 +34,7 @@
   "engines": {
     "node": ">=22"
   },
+  "os": ["darwin", "linux"],
   "scripts": {
     "build": "esbuild cli.ts --bundle --platform=node --target=node22 --format=esm --external:better-sqlite3 --external:chalk --external:commander --outfile=dist/cli.js && node scripts/post-build.mjs",
     "prepublishOnly": "npm run build",

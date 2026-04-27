@@ -22,17 +22,20 @@ case "$ARCH_RAW" in
 esac
 
 case "$OS" in
-  darwin) EXT=""; PLATFORM="darwin-$ARCH" ;;
-  linux) EXT=""; PLATFORM="linux-$ARCH" ;;
-  msys*|cygwin*|mingw*) EXT=".exe"; PLATFORM="windows-$ARCH" ;;
-  *) echo "unsupported os: $OS" >&2; exit 1 ;;
+  darwin) PLATFORM="darwin-$ARCH" ;;
+  linux) PLATFORM="linux-$ARCH" ;;
+  *)
+    echo "unsupported OS: $OS" >&2
+    echo "cxs supports macOS and Linux only. Windows users: please run under WSL." >&2
+    exit 1
+    ;;
 esac
 
-ASSET="cxs-${PLATFORM}${EXT}"
+ASSET="cxs-${PLATFORM}"
 URL="https://github.com/${OWNER}/${REPO}/releases/latest/download/${ASSET}"
 
 mkdir -p "$INSTALL_DIR"
-TARGET="$INSTALL_DIR/cxs${EXT}"
+TARGET="$INSTALL_DIR/cxs"
 
 echo "downloading $ASSET from $URL"
 curl -fsSL --proto '=https' --tlsv1.2 -o "$TARGET" "$URL"

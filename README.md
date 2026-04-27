@@ -32,6 +32,8 @@
 
 ## CLI Install Guide
 
+> **平台支持**:**macOS / Linux only**(`darwin-arm64` / `darwin-x64` / `linux-x64` / `linux-arm64`)。Windows 走 WSL,我们没原生测过 Windows path。
+
 ### 一行安装(推荐:零依赖)
 
 从 GitHub Release 拉对应平台的 standalone binary,自动放到 `~/.local/bin/cxs`,**不需要预装 Bun 或 Node**:
@@ -40,7 +42,7 @@
 curl -fsSL https://raw.githubusercontent.com/catoncat/cxs/main/scripts/install.sh | bash
 ```
 
-支持平台:darwin-arm64 / darwin-x64 / linux-x64 / linux-arm64 / windows-x64。如果 `~/.local/bin` 不在 PATH,脚本会提示;或先 `export CXS_INSTALL_DIR=/usr/local/bin` 再跑。
+如果 `~/.local/bin` 不在 PATH,脚本会提示;或先 `export CXS_INSTALL_DIR=/usr/local/bin` 再跑。
 
 ### npm 全局安装(需要 Node 22+)
 
