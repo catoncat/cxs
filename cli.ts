@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { Command } from "commander";
 import { DEFAULT_CODEX_STATE_DB_PATH, DEFAULT_DB_PATH, resolveCodexDir } from "./env";
 import {
@@ -30,7 +30,7 @@ const program = new Command();
 program
   .name("cxs")
   .description("Codex sessions 渐进式检索 CLI")
-  .version("0.1.0");
+  .version(readPackageVersion());
 
 program
   .command("current")
@@ -234,6 +234,15 @@ function optionalInt(value: string | undefined): number | undefined {
 function normalizeListSort(value: string | undefined): SessionListSort {
   if (value === "started" || value === "messages") return value;
   return "ended";
+}
+
+function readPackageVersion(): string {
+  const raw = readFileSync(new URL("./package.json", import.meta.url), "utf8");
+  const parsed = JSON.parse(raw) as { version?: unknown };
+  if (typeof parsed.version !== "string" || !parsed.version) {
+    throw new Error("package.json version is missing");
+  }
+  return parsed.version;
 }
 
 function emitCurrentError(error: CurrentStateDbError, jsonMode: boolean): void {

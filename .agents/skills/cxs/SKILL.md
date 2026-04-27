@@ -1,6 +1,6 @@
 ---
 name: cxs
-description: "用 cxs 对 Codex session 日志做渐进式检索：find -> read-range -> read-page。用于用户说之前、上次、前几天、昨天、我记得我配过、我试过、我们讨论过、翻一下之前的 session、找那次我跑通的命令、之前那个 codex 对话、以前 debug 过的问题、历史对话、codex 历史、session 历史，或者需要在 ~/.codex/sessions 里定位一段对话、但又不想把整批 JSONL 拉进来读。不是用来做当前仓库代码搜索、读当前文件、查外部文档、总结今天提交或收尾当前会话。Also triggers on English: 'last time I', 'earlier session', 'did we already', 'I remember configuring', 'previous codex chat', 'search my codex history'."
+description: "用于用户要找本机 Codex 历史会话或 ~/.codex/sessions 上下文：之前、上次、前几天、我记得、我们讨论过、翻旧 session、找那次命令、历史对话、Codex history、previous/earlier/last Codex chat。不要用于当前仓库代码搜索、外部文档、今日提交/日报或当前会话收尾。"
 ---
 
 # cxs
@@ -14,6 +14,8 @@ npx skills add catoncat/cxs --skill cxs -g -a codex -y
 ```
 
 CLI install guide: https://github.com/catoncat/cxs#cli-install-guide
+
+这个 skill 只提供 agent 工作流，不安装 `cxs` CLI 本体。若用户询问安装方式，指向 README 的 CLI install guide，并提醒安装或更新 skill 后需要重启 Codex / 开新 session。
 
 ## 路径前提
 
@@ -29,6 +31,15 @@ CLI install guide: https://github.com/catoncat/cxs#cli-install-guide
 ```bash
 "${CXS_BIN:-cxs}" <subcommand> ...
 ```
+
+使用前先验证命令面确实是 cxs：
+
+```bash
+"${CXS_BIN:-cxs}" --version
+"${CXS_BIN:-cxs}" --help
+```
+
+如果 `--version` 没有输出 cxs 版本，或 `--help` 没有列出 `sync/find/read-range/read-page/list/stats/current`，不要继续猜；改用 `CXS_BIN=/absolute/path/to/bin/cxs`，或先让用户完成 CLI install guide。
 
 这样可以同时兼容：
 
@@ -61,6 +72,7 @@ CLI install guide: https://github.com/catoncat/cxs#cli-install-guide
 ## 前置
 
 - 先用 `stats --json` 看 `dbPath`、`lastSyncAt`、`sessionCount`
+- 如果 `stats --json` 提示索引不存在，先跑 `sync`
 - 用户明确说“最近那次”“我刚做过”，但 `lastSyncAt` 很旧或 `find`/`list` 零结果时，先跑 `sync`
 - `sync` 默认严格模式；任一文件失败都会非零退出且不提交半截索引
 - 只有用户接受部分成功时才加 `--best-effort`

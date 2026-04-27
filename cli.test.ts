@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { chmodSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { INDEX_VERSION } from "./env";
@@ -23,6 +23,20 @@ afterEach(() => {
 });
 
 describe("cxs cli", () => {
+  test("bin/cxs works when invoked through a symlink", async () => {
+    const base = mkdtempSync(join(tmpdir(), "cxs-cli-symlink-"));
+    tempDirs.push(base);
+    const linkDir = join(base, "bin");
+    mkdirSync(linkDir, { recursive: true });
+    const linkPath = join(linkDir, "cxs-sim");
+    symlinkSync(join(import.meta.dir, "bin", "cxs"), linkPath);
+
+    const result = await runExecutable(linkPath, ["--version"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.trim()).toBe(packageVersion());
+  });
+
   test("help only shows current/sync/find/read-range/read-page/list/stats", async () => {
     const result = await runCli(["--help"]);
     expect(result.exitCode).toBe(0);
@@ -337,9 +351,24 @@ function line(type: string, payload: Record<string, unknown>): string {
   });
 }
 
+function packageVersion(): string {
+  const raw = readFileSync(join(import.meta.dir, "package.json"), "utf8");
+  const parsed = JSON.parse(raw) as { version?: unknown };
+  if (typeof parsed.version !== "string") throw new Error("package.json version is missing");
+  return parsed.version;
+}
+
 async function runCli(args: string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const proc = Bun.spawn([process.execPath, "cli.ts", ...args], {
-    cwd: import.meta.dir,
+  return runExecutable(process.execPath, ["cli.ts", ...args], import.meta.dir);
+}
+
+async function runExecutable(
+  executable: string,
+  args: string[],
+  cwd = import.meta.dir,
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const proc = Bun.spawn([executable, ...args], {
+    cwd,
     stdout: "pipe",
     stderr: "pipe",
   });

@@ -38,11 +38,33 @@ bun install
 
 ## CLI Install Guide
 
+`cxs` 目前推荐从源码安装，适合本机工具或 agent sidecar 使用：
+
 ```bash
 git clone https://github.com/catoncat/cxs.git
 cd cxs
 bun install
 export CXS_BIN="$PWD/bin/cxs"
+"$CXS_BIN" --version
+"$CXS_BIN" --help
+```
+
+`--version` 应输出当前 `package.json` 里的版本号；`--help` 应显示 `sync`、`find`、`read-range`、`read-page`、`list`、`stats`、`current`。
+
+首次使用前建立索引：
+
+```bash
+"$CXS_BIN" sync
+"$CXS_BIN" stats --json
+```
+
+如果希望直接使用 `cxs` 命令，可以把仓库里的启动脚本链接到 PATH：
+
+```bash
+mkdir -p ~/bin
+ln -sf "$PWD/bin/cxs" ~/bin/cxs
+export PATH="$HOME/bin:$PATH"
+cxs --version
 ```
 
 要求：
@@ -217,4 +239,6 @@ CLI install guide:
 
 注意：
 
-- 最稳的做法是先让 `cxs` 命令可执行，或设置 `CXS_BIN=/absolute/path/to/bin/cxs`
+- `npx skills add` 只安装 agent skill，不安装 CLI 本体
+- 安装或更新 skill 后，需要重启 Codex / 开新 session 才会被 agent 发现
+- 推荐先按 CLI install guide 让 `cxs` 可执行，或设置 `CXS_BIN=/absolute/path/to/bin/cxs`
