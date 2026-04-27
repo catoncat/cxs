@@ -1,4 +1,4 @@
-import type { FindResult } from "./types";
+import type { FindMatchRole, FindResult, MatchSource } from "./types";
 import { queryTerms } from "./tokenize";
 
 export interface RawHitRow {
@@ -8,9 +8,10 @@ export interface RawHitRow {
   cwd: string;
   startedAt: string;
   endedAt: string;
-  matchSeq: number;
-  matchRole: "user" | "assistant";
-  matchTimestamp: string;
+  matchSource: MatchSource;
+  matchSeq: number | null;
+  matchRole: FindMatchRole;
+  matchTimestamp: string | null;
   contentText: string;
   snippet: string;
   // FTS path: negative bm25(). LIKE path: a small negative ordinal. Either
@@ -55,8 +56,11 @@ export function classifyQueryProfile(query: string): QueryProfile & { kind: "bro
 interface SessionAggregate {
   row: RawHitRow;
   bestRow: RawHitRow;
+  bestDisplayRow: RawHitRow;
   bestRowSignalScore: number;
+  bestDisplayRowSignalScore: number;
   hitCount: number;
+  sessionHitCount: number;
   userHitCount: number;
   titlePhrase: boolean;
   titleTermHits: number;
@@ -82,8 +86,11 @@ export function rerankHits(rows: RawHitRow[], query: string, limit: number): Fin
       grouped.set(row.sessionUuid, {
         row,
         bestRow: row,
+        bestDisplayRow: row,
         bestRowSignalScore: signalScore,
+        bestDisplayRowSignalScore: signalScore,
         hitCount: 1,
+        sessionHitCount: row.matchSource === "session" ? 1 : 0,
         userHitCount: row.matchRole === "user" ? 1 : 0,
         titlePhrase,
         titleTermHits,
@@ -93,6 +100,7 @@ export function rerankHits(rows: RawHitRow[], query: string, limit: number): Fin
     }
 
     existing.hitCount += 1;
+    if (row.matchSource === "session") existing.sessionHitCount += 1;
     if (row.matchRole === "user") existing.userHitCount += 1;
     existing.titlePhrase = existing.titlePhrase || titlePhrase;
     existing.titleTermHits = Math.max(existing.titleTermHits, titleTermHits);
@@ -100,6 +108,10 @@ export function rerankHits(rows: RawHitRow[], query: string, limit: number): Fin
     if (signalScore > existing.bestRowSignalScore) {
       existing.bestRow = row;
       existing.bestRowSignalScore = signalScore;
+    }
+    if (shouldUseDisplayRow(existing.bestDisplayRow, row, existing.bestDisplayRowSignalScore, signalScore)) {
+      existing.bestDisplayRow = row;
+      existing.bestDisplayRowSignalScore = signalScore;
     }
   }
 
@@ -124,12 +136,24 @@ export function rerankHits(rows: RawHitRow[], query: string, limit: number): Fin
     startedAt: aggregate.row.startedAt,
     endedAt: aggregate.row.endedAt,
     matchCount: aggregate.hitCount,
-    matchSeq: aggregate.bestRow.matchSeq,
-    matchRole: aggregate.bestRow.matchRole,
-    matchTimestamp: aggregate.bestRow.matchTimestamp,
+    matchSource: aggregate.bestDisplayRow.matchSource,
+    matchSeq: aggregate.bestDisplayRow.matchSeq,
+    matchRole: aggregate.bestDisplayRow.matchRole,
+    matchTimestamp: aggregate.bestDisplayRow.matchTimestamp,
     score: sessionScore,
-    snippet: aggregate.bestRow.snippet,
+    snippet: aggregate.bestDisplayRow.snippet,
   }));
+}
+
+function shouldUseDisplayRow(
+  current: RawHitRow,
+  candidate: RawHitRow,
+  currentScore: number,
+  candidateScore: number,
+): boolean {
+  if (candidate.matchSource === "message" && current.matchSource !== "message") return true;
+  if (candidate.matchSource !== current.matchSource) return false;
+  return candidateScore > currentScore;
 }
 
 /**
@@ -149,6 +173,7 @@ function scoreRow(row: RawHitRow, profile: QueryProfile): number {
   return normalizedBm25
     + (contentPhrase ? 8 : 0)
     + termCoverage * 2
+    + (row.matchSource === "message" ? 4 : 0)
     + (row.matchRole === "user" ? 2 : 0);
 }
 
@@ -166,6 +191,7 @@ function scoreSession(aggregate: SessionAggregate, profile: QueryProfile, now: n
     + aggregate.titleTermHits * 10
     + aggregate.cwdTermHits * 18
     + Math.min(aggregate.userHitCount, 3) * 4
+    + Math.min(aggregate.sessionHitCount, 2) * 2
     + Math.min(aggregate.hitCount, 6) * 1.5
     + recencyBonus;
 }

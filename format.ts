@@ -1,5 +1,6 @@
 import chalk from "chalk";
 import type {
+  CurrentSessionCandidate,
   CwdCount,
   FindResult,
   MessageRecord,
@@ -38,12 +39,17 @@ export function printFindResults(query: string, results: FindResult[]): void {
     console.log();
     console.log(chalk.bold(`[${result.rank}] ${result.title || "(no title)"}`));
     console.log(chalk.gray(`${result.startedAt} · ${result.cwd || "-"}`));
-    console.log(chalk.gray(`uuid=${result.sessionUuid} · seq=${result.matchSeq} · matches=${result.matchCount}`));
+    const matchPoint = result.matchSeq === null ? "session-level" : `seq=${result.matchSeq}`;
+    console.log(chalk.gray(`uuid=${result.sessionUuid} · ${matchPoint} · matches=${result.matchCount}`));
     if (result.summaryText) {
       console.log(chalk.gray(trimMessage(result.summaryText)));
     }
     console.log(stripMarks(result.snippet));
-    console.log(chalk.gray(`next: cxs read-range ${result.sessionUuid} --seq ${result.matchSeq}`));
+    if (result.matchSeq === null) {
+      console.log(chalk.gray(`next: cxs read-page ${result.sessionUuid} --offset 0 --limit 40`));
+    } else {
+      console.log(chalk.gray(`next: cxs read-range ${result.sessionUuid} --seq ${result.matchSeq}`));
+    }
   }
 }
 
@@ -98,6 +104,23 @@ export function printSessionList(results: SessionListEntry[]): void {
     if (entry.summaryText) {
       console.log(chalk.gray(trimMessage(entry.summaryText)));
     }
+  }
+}
+
+export function printCurrentSessions(cwd: string, results: CurrentSessionCandidate[]): void {
+  console.log(chalk.bold.cyan("cxs current"));
+  console.log(chalk.gray(`cwd=${cwd || "-"}`));
+  if (results.length === 0) {
+    console.log(chalk.yellow("没有匹配的 session"));
+    return;
+  }
+
+  for (const [index, entry] of results.entries()) {
+    console.log();
+    console.log(chalk.bold(`[${index + 1}] ${entry.title || "(no title)"}`));
+    console.log(chalk.gray(`${entry.cwd || "-"} · updated_at_ms=${entry.updatedAtMs}`));
+    console.log(chalk.gray(`uuid=${entry.sessionUuid}`));
+    console.log(chalk.gray(`file=${entry.filePath}`));
   }
 }
 

@@ -1,4 +1,4 @@
-import type { Database } from "bun:sqlite";
+import { Database } from "bun:sqlite";
 import { statSync } from "node:fs";
 import {
   getMessagesForPage,
@@ -7,13 +7,20 @@ import {
   getStatsCounts,
   getTopCwds,
   listSessions,
-  openDb,
+  openReadDb,
 } from "./db";
 import { INDEX_VERSION } from "./env";
 import { classifyQueryProfile, rerankHits } from "./ranking";
 import type { RawHitRow } from "./ranking";
 import { hasCjk, isCjkToken, queryTerms } from "./tokenize";
-import type { FindResult, SessionListEntry, SessionListQuery, SessionRecord, StatsSummary } from "./types";
+import type {
+  CurrentSessionCandidate,
+  FindResult,
+  SessionListEntry,
+  SessionListQuery,
+  SessionRecord,
+  StatsSummary,
+} from "./types";
 
 export { classifyQueryProfile } from "./ranking";
 
@@ -22,8 +29,12 @@ export function findSessions(
   query: string,
   limit: number,
 ): { query: string; results: FindResult[] } {
-  const db = openDb(dbPath);
-  const rawRows = searchMessageHits(db, query, Math.max(limit * 12, 50));
+  const db = openReadDb(dbPath);
+  const recallLimit = Math.max(limit * 12, 50);
+  const rawRows = [
+    ...searchMessageHits(db, query, recallLimit),
+    ...searchSessionHits(db, query, recallLimit),
+  ];
   const results = rerankHits(rawRows, query, limit);
   db.close();
   return { query, results };
@@ -40,7 +51,7 @@ export function getMessageRange(
   rangeEndSeq: number;
   messages: ReturnType<typeof getMessagesForRange>;
 } {
-  const db = openDb(dbPath);
+  const db = openReadDb(dbPath);
   const anchorSeq = resolveAnchorSeq(db, sessionUuid, options.seq, options.query);
   const session = getSessionRecord(db, sessionUuid);
   if (!session) throw new Error(`session not found: ${sessionUuid}`);
@@ -65,7 +76,7 @@ export function getMessagePage(
   hasMore: boolean;
   messages: ReturnType<typeof getMessagesForPage>;
 } {
-  const db = openDb(dbPath);
+  const db = openReadDb(dbPath);
   const session = getSessionRecord(db, sessionUuid);
   if (!session) throw new Error(`session not found: ${sessionUuid}`);
   const messages = getMessagesForPage(db, sessionUuid, offset, limit);
@@ -79,14 +90,46 @@ export function listSessionSummaries(
   dbPath: string,
   query: SessionListQuery,
 ): { query: SessionListQuery; results: SessionListEntry[] } {
-  const db = openDb(dbPath);
+  const db = openReadDb(dbPath);
   const results = listSessions(db, query);
   db.close();
   return { query, results };
 }
 
+export function getCurrentSessions(
+  stateDbPath: string,
+  cwd: string,
+  limit: number,
+): { cwd: string; candidates: CurrentSessionCandidate[] } {
+  const normalizedCwd = cwd.trim();
+  if (!normalizedCwd) {
+    return { cwd: normalizedCwd, candidates: [] };
+  }
+
+  const db = new Database(stateDbPath, { readonly: true });
+  try {
+    const candidates = db
+      .query(`
+        SELECT
+          id AS sessionUuid,
+          title,
+          cwd,
+          rollout_path AS filePath,
+          COALESCE(updated_at_ms, 0) AS updatedAtMs
+        FROM threads
+        WHERE cwd = ?
+        ORDER BY updated_at_ms DESC
+        LIMIT ?
+      `)
+      .all(normalizedCwd, limit) as CurrentSessionCandidate[];
+    return { cwd: normalizedCwd, candidates };
+  } finally {
+    db.close();
+  }
+}
+
 export function collectStats(dbPath: string): StatsSummary {
-  const db = openDb(dbPath);
+  const db = openReadDb(dbPath);
   const counts = getStatsCounts(db);
   const topCwds = getTopCwds(db, 10);
   db.close();
@@ -152,6 +195,16 @@ function searchMessageHits(db: Database, query: string, limit: number, sessionUu
   return searchByFts(db, terms, limit, sessionUuid);
 }
 
+function searchSessionHits(db: Database, query: string, limit: number): RawHitRow[] {
+  const normalized = query.trim();
+  if (!normalized || !tableExists(db, "sessions_fts")) return [];
+
+  const terms = queryTerms(normalized);
+  if (terms.length === 0) return [];
+
+  return searchSessionsByFts(db, normalized, terms, limit);
+}
+
 function searchByFts(
   db: Database,
   terms: string[],
@@ -177,6 +230,7 @@ function searchByFts(
         s.cwd AS cwd,
         s.started_at AS startedAt,
         s.ended_at AS endedAt,
+        'message' AS matchSource,
         m.seq AS matchSeq,
         m.role AS matchRole,
         m.timestamp AS matchTimestamp,
@@ -191,6 +245,43 @@ function searchByFts(
       LIMIT ?
     `)
     .all(...params) as RawHitRow[];
+}
+
+function searchSessionsByFts(
+  db: Database,
+  query: string,
+  terms: string[],
+  limit: number,
+): RawHitRow[] {
+  const matchExpr = buildFtsMatch(terms);
+  const rows = db
+    .query(`
+      SELECT
+        s.session_uuid AS sessionUuid,
+        s.title AS title,
+        s.summary_text AS summaryText,
+        s.cwd AS cwd,
+        s.started_at AS startedAt,
+        s.ended_at AS endedAt,
+        'session' AS matchSource,
+        NULL AS matchSeq,
+        'session' AS matchRole,
+        NULL AS matchTimestamp,
+        s.title || char(10) || s.summary_text || char(10) || s.compact_text || char(10) || s.reasoning_summary_text AS contentText,
+        '' AS snippet,
+        bm25(sessions_fts, 8.0, 3.0, 4.0, 1.2) AS score
+      FROM sessions_fts
+      JOIN sessions s ON s.id = sessions_fts.rowid
+      WHERE sessions_fts MATCH ?
+      ORDER BY score
+      LIMIT ?
+    `)
+    .all(matchExpr, limit) as RawHitRow[];
+
+  return rows.map((row) => ({
+    ...row,
+    snippet: makeRawSnippet(row.contentText, query, terms),
+  }));
 }
 
 function searchByLike(db: Database, query: string, limit: number, sessionUuid?: string): RawHitRow[] {
@@ -211,6 +302,7 @@ function searchByLike(db: Database, query: string, limit: number, sessionUuid?: 
         s.cwd AS cwd,
         s.started_at AS startedAt,
         s.ended_at AS endedAt,
+        'message' AS matchSource,
         m.seq AS matchSeq,
         m.role AS matchRole,
         m.timestamp AS matchTimestamp,
@@ -231,6 +323,13 @@ function searchByLike(db: Database, query: string, limit: number, sessionUuid?: 
     // code that touches this raw score won't see a sign mismatch.
     score: -(index + 1),
   }));
+}
+
+function tableExists(db: Database, tableName: string): boolean {
+  const row = db
+    .query("SELECT 1 FROM sqlite_master WHERE name = ? LIMIT 1")
+    .get(tableName);
+  return Boolean(row);
 }
 
 /**
@@ -270,6 +369,107 @@ function makeLikeSnippet(content: string, query: string): string {
   // snippet agrees with FTS5's snippet() which highlights all matches.
   const highlighted = wrapAllOccurrences(snippet, target);
   return `${prefix}${highlighted}${suffix}`;
+}
+
+function makeRawSnippet(content: string, query: string, terms: string[]): string {
+  const normalizedQuery = query.toLowerCase();
+  const lower = content.toLowerCase();
+  const phraseIndex = normalizedQuery ? lower.indexOf(normalizedQuery) : -1;
+  if (phraseIndex >= 0) {
+    return snippetAround(content, phraseIndex, query.length, [normalizedQuery]);
+  }
+
+  const termLowers = uniqueNonEmpty(terms.map((term) => term.toLowerCase()));
+  const termHits = termLowers.flatMap((term) => collectTermHits(lower, term));
+  if (termHits.length === 0) return content.slice(0, 160);
+
+  const bestWindow = termHits
+    .map((hit) => {
+      const start = Math.max(0, hit.index - 40);
+      const end = Math.min(content.length, hit.index + hit.length + 80);
+      return {
+        start,
+        end,
+        anchor: hit.index,
+        score: scoreSnippetWindow(lower.slice(start, end), termLowers),
+      };
+    })
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      return left.anchor - right.anchor;
+    })[0];
+
+  return snippetWindow(content, bestWindow.start, bestWindow.end, termLowers);
+}
+
+function snippetAround(content: string, index: number, length: number, needleLowers: string[]): string {
+  const start = Math.max(0, index - 40);
+  const end = Math.min(content.length, index + length + 80);
+  return snippetWindow(content, start, end, needleLowers);
+}
+
+function snippetWindow(content: string, start: number, end: number, needleLowers: string[]): string {
+  const prefix = start > 0 ? "…" : "";
+  const suffix = end < content.length ? "…" : "";
+  const snippet = content.slice(start, end);
+  return `${prefix}${wrapAnyOccurrences(snippet, needleLowers)}${suffix}`;
+}
+
+function collectTermHits(lower: string, termLower: string): Array<{ index: number; length: number }> {
+  const hits: Array<{ index: number; length: number }> = [];
+  let cursor = 0;
+  while (cursor < lower.length) {
+    const index = lower.indexOf(termLower, cursor);
+    if (index < 0) break;
+    hits.push({ index, length: termLower.length });
+    cursor = index + termLower.length;
+  }
+  return hits;
+}
+
+function scoreSnippetWindow(lowerSnippet: string, termLowers: string[]): number {
+  let distinctTerms = 0;
+  let totalHits = 0;
+  let matchedChars = 0;
+
+  for (const term of termLowers) {
+    const hits = collectTermHits(lowerSnippet, term).length;
+    if (hits > 0) distinctTerms += 1;
+    totalHits += hits;
+    matchedChars += hits * term.length;
+  }
+
+  return distinctTerms * 1_000 + matchedChars * 10 + totalHits;
+}
+
+function uniqueNonEmpty(values: string[]): string[] {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function wrapAnyOccurrences(haystack: string, needleLowers: string[]): string {
+  const needles = uniqueNonEmpty(needleLowers).sort((left, right) => right.length - left.length);
+  if (needles.length === 0) return haystack;
+
+  const lower = haystack.toLowerCase();
+  const matches = needles
+    .flatMap((needle) => collectTermHits(lower, needle))
+    .sort((left, right) => {
+      if (left.index !== right.index) return left.index - right.index;
+      return right.length - left.length;
+    });
+
+  const out: string[] = [];
+  let cursor = 0;
+  for (const match of matches) {
+    if (match.index < cursor) continue;
+    out.push(haystack.slice(cursor, match.index));
+    out.push("<mark>");
+    out.push(haystack.slice(match.index, match.index + match.length));
+    out.push("</mark>");
+    cursor = match.index + match.length;
+  }
+  out.push(haystack.slice(cursor));
+  return out.join("");
 }
 
 function wrapAllOccurrences(haystack: string, needleLower: string): string {

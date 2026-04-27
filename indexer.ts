@@ -1,8 +1,9 @@
 import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { DEFAULT_DB_PATH, INDEX_VERSION, ensureDataDir, resolveCodexDir } from "./env";
-import { deleteSessionByFilePath, getIndexedSessionMeta, openDb, replaceSession } from "./db";
+import { deleteSessionByFilePath, getIndexedSessionMeta, openWriteDb, replaceSession } from "./db";
 import { parseCodexSession } from "./parser";
+import { withSyncLock } from "./sync-lock";
 import type { ParsedSession, SyncErrorDetail, SyncSummary } from "./types";
 
 interface SyncOptions {
@@ -39,66 +40,68 @@ export async function syncSessions(options: SyncOptions = {}): Promise<SyncSumma
   ensureDataDir();
   const dbPath = options.dbPath ?? DEFAULT_DB_PATH;
   const rootDir = resolveCodexDir(options.rootDir);
-  const db = openDb(dbPath);
-  const files = collectJsonlFiles(rootDir);
-  const operations: SyncOperation[] = [];
+  return withSyncLock(dbPath, async () => {
+    const db = openWriteDb(dbPath);
+    const files = collectJsonlFiles(rootDir);
+    const operations: SyncOperation[] = [];
 
-  const summary: SyncSummary = {
-    scanned: files.length,
-    added: 0,
-    updated: 0,
-    skipped: 0,
-    filtered: 0,
-    errors: 0,
-    errorDetails: [],
-  };
+    const summary: SyncSummary = {
+      scanned: files.length,
+      added: 0,
+      updated: 0,
+      skipped: 0,
+      filtered: 0,
+      errors: 0,
+      errorDetails: [],
+    };
 
-  try {
-    for (const filePath of files) {
-      try {
-        const stats = statSync(filePath);
-        const indexed = getIndexedSessionMeta(db, filePath);
-        if (isUnchanged(indexed, stats.mtimeMs, stats.size)) {
-          summary.skipped += 1;
-          continue;
+    try {
+      for (const filePath of files) {
+        try {
+          const stats = statSync(filePath);
+          const indexed = getIndexedSessionMeta(db, filePath);
+          if (isUnchanged(indexed, stats.mtimeMs, stats.size)) {
+            summary.skipped += 1;
+            continue;
+          }
+
+          const parsed = await parseCodexSession(filePath);
+          if (parsed.kind === "filtered") {
+            operations.push({ kind: "filtered", filePath });
+            continue;
+          }
+          if (parsed.kind === "skipped") {
+            summary.skipped += 1;
+            continue;
+          }
+
+          operations.push({
+            kind: "replace",
+            filePath,
+            session: parsed.session,
+            rawFileMtime: stats.mtimeMs,
+            rawFileSize: stats.size,
+            isUpdate: Boolean(indexed),
+          });
+        } catch (error) {
+          recordSyncError(summary, filePath, error);
         }
-
-        const parsed = await parseCodexSession(filePath);
-        if (parsed.kind === "filtered") {
-          operations.push({ kind: "filtered", filePath });
-          continue;
-        }
-        if (parsed.kind === "skipped") {
-          summary.skipped += 1;
-          continue;
-        }
-
-        operations.push({
-          kind: "replace",
-          filePath,
-          session: parsed.session,
-          rawFileMtime: stats.mtimeMs,
-          rawFileSize: stats.size,
-          isUpdate: Boolean(indexed),
-        });
-      } catch (error) {
-        recordSyncError(summary, filePath, error);
       }
-    }
 
-    if (summary.errors > 0 && !options.bestEffort) {
-      throw new SyncError(summary);
-    }
+      if (summary.errors > 0 && !options.bestEffort) {
+        throw new SyncError(summary);
+      }
 
-    applyOperations(db, operations, summary, Boolean(options.bestEffort));
-    if (summary.errors > 0 && !options.bestEffort) {
-      throw new SyncError(summary);
-    }
+      applyOperations(db, operations, summary, Boolean(options.bestEffort));
+      if (summary.errors > 0 && !options.bestEffort) {
+        throw new SyncError(summary);
+      }
 
-    return summary;
-  } finally {
-    db.close();
-  }
+      return summary;
+    } finally {
+      db.close();
+    }
+  });
 }
 
 function isUnchanged(
@@ -140,7 +143,7 @@ function walk(currentDir: string, files: string[]): void {
 }
 
 function applyOperations(
-  db: ReturnType<typeof openDb>,
+  db: ReturnType<typeof openWriteDb>,
   operations: SyncOperation[],
   summary: SyncSummary,
   bestEffort: boolean,
@@ -177,7 +180,7 @@ function applyOperations(
   }
 }
 
-function applyOperation(db: ReturnType<typeof openDb>, operation: SyncOperation): void {
+function applyOperation(db: ReturnType<typeof openWriteDb>, operation: SyncOperation): void {
   if (operation.kind === "filtered") {
     deleteSessionByFilePath(db, operation.filePath);
     return;

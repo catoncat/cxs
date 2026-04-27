@@ -1,8 +1,10 @@
 #!/usr/bin/env bun
 
+import { existsSync } from "node:fs";
 import { Command } from "commander";
-import { DEFAULT_DB_PATH, resolveCodexDir } from "./env";
+import { DEFAULT_CODEX_STATE_DB_PATH, DEFAULT_DB_PATH, resolveCodexDir } from "./env";
 import {
+  printCurrentSessions,
   printFindResults,
   printReadPage,
   printReadRangeResult,
@@ -14,10 +16,12 @@ import { SyncError, syncSessions } from "./indexer";
 import {
   collectStats,
   findSessions,
+  getCurrentSessions,
   getMessagePage,
   getMessageRange,
   listSessionSummaries,
 } from "./query";
+import { SyncLockTimeoutError } from "./sync-lock";
 import type { SessionListSort } from "./types";
 
 const program = new Command();
@@ -26,6 +30,27 @@ program
   .name("cxs")
   .description("Codex sessions 渐进式检索 CLI")
   .version("0.1.0");
+
+program
+  .command("current")
+  .description("按 cwd 返回当前候选 session，不做全文检索")
+  .option("--cwd <path>", "显式指定 cwd，默认当前工作目录")
+  .option("-n, --limit <n>", "返回条数上限", "100")
+  .option("--state-db <path>", "覆盖默认 Codex state SQLite 路径", DEFAULT_CODEX_STATE_DB_PATH)
+  .option("--json", "输出 JSON")
+  .action((options) => {
+    const cwd = options.cwd ?? process.cwd();
+    if (!existsSync(options.stateDb)) {
+      throw new Error(`state db not found: ${options.stateDb}`);
+    }
+
+    const result = getCurrentSessions(options.stateDb, cwd, parsePositiveInt(options.limit, 100));
+    if (options.json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    printCurrentSessions(result.cwd, result.candidates);
+  });
 
 program
   .command("sync")
@@ -52,6 +77,15 @@ program
           console.error(JSON.stringify(error.summary, null, 2));
         } else {
           printSyncSummary(error.summary);
+        }
+        process.exitCode = 1;
+        return;
+      }
+      if (error instanceof SyncLockTimeoutError) {
+        if (options.json) {
+          console.error(JSON.stringify({ error: error.message }, null, 2));
+        } else {
+          console.error(error.message);
         }
         process.exitCode = 1;
         return;

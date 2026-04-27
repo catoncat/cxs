@@ -11,13 +11,27 @@ import type {
 } from "./types";
 
 const CUSTOM_SQLITE = "/opt/homebrew/opt/sqlite/lib/libsqlite3.dylib";
+const BUSY_TIMEOUT_MS = 5000;
 
 if (existsSync(CUSTOM_SQLITE)) {
   Database.setCustomSQLite(CUSTOM_SQLITE);
 }
 
-export function openDb(dbPath: string): Database {
+export function openReadDb(dbPath: string): Database {
+  if (!existsSync(dbPath)) {
+    throw new Error(`index not found: ${dbPath}; run cxs sync first`);
+  }
+
+  const db = new Database(dbPath, { readonly: true });
+  db.run(`PRAGMA busy_timeout=${BUSY_TIMEOUT_MS}`);
+  db.run("PRAGMA query_only=ON");
+  db.run("PRAGMA temp_store=MEMORY");
+  return db;
+}
+
+export function openWriteDb(dbPath: string): Database {
   const db = new Database(dbPath);
+  db.run(`PRAGMA busy_timeout=${BUSY_TIMEOUT_MS}`);
   db.run("PRAGMA journal_mode=WAL");
   db.run("PRAGMA synchronous=NORMAL");
   db.run("PRAGMA temp_store=MEMORY");
@@ -34,6 +48,8 @@ function ensureSchema(db: Database): void {
       file_path TEXT NOT NULL UNIQUE,
       title TEXT NOT NULL DEFAULT '',
       summary_text TEXT NOT NULL DEFAULT '',
+      compact_text TEXT NOT NULL DEFAULT '',
+      reasoning_summary_text TEXT NOT NULL DEFAULT '',
       cwd TEXT NOT NULL DEFAULT '',
       model TEXT NOT NULL DEFAULT '',
       started_at TEXT NOT NULL,
@@ -47,6 +63,8 @@ function ensureSchema(db: Database): void {
   `);
 
   ensureTextColumn(db, "sessions", "summary_text");
+  ensureTextColumn(db, "sessions", "compact_text");
+  ensureTextColumn(db, "sessions", "reasoning_summary_text");
 
   db.run(`
     CREATE TABLE IF NOT EXISTS messages (
@@ -76,6 +94,8 @@ function ensureSchema(db: Database): void {
     )
   `);
 
+  ensureSessionsFtsTable(db);
+
   dropLegacyTrigramTable(db);
 }
 
@@ -84,6 +104,33 @@ function dropLegacyTrigramTable(db: Database): void {
   // The hybrid bigram+Segmenter tokenizer in tokenize.ts replaces it, so
   // drop the old table and its shadow rows if they still exist.
   db.run("DROP TABLE IF EXISTS messages_fts_trigram");
+}
+
+function ensureSessionsFtsTable(db: Database): void {
+  const existing = db
+    .query("SELECT 1 FROM sqlite_master WHERE name = 'sessions_fts' LIMIT 1")
+    .get();
+
+  if (existing) {
+    const columns = db
+      .query("PRAGMA table_info(sessions_fts)")
+      .all() as Array<{ name: string }>;
+    const names = new Set(columns.map((column) => column.name));
+    if (!names.has("compact_text") || !names.has("reasoning_summary_text")) {
+      db.run("DROP TABLE sessions_fts");
+    }
+  }
+
+  db.run(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS sessions_fts USING fts5(
+      title,
+      summary_text,
+      compact_text,
+      reasoning_summary_text,
+      session_uuid UNINDEXED,
+      tokenize='unicode61 remove_diacritics 1'
+    )
+  `);
 }
 
 export function getIndexedSessionMeta(
@@ -114,6 +161,7 @@ export function deleteSessionByFilePath(db: Database, filePath: string): void {
 }
 
 function deleteSessionByUuid(db: Database, sessionUuid: string): void {
+  db.run("DELETE FROM sessions_fts WHERE session_uuid = ?", sessionUuid);
   db.run("DELETE FROM messages_fts WHERE session_uuid = ?", sessionUuid);
   db.run("DELETE FROM messages WHERE session_uuid = ?", sessionUuid);
   db.run("DELETE FROM sessions WHERE session_uuid = ?", sessionUuid);
@@ -135,7 +183,8 @@ export function replaceSession(
       db.run(
         `
           UPDATE sessions
-          SET session_uuid = ?, file_path = ?, title = ?, summary_text = ?, cwd = ?, model = ?, started_at = ?, ended_at = ?,
+          SET session_uuid = ?, file_path = ?, title = ?, summary_text = ?, compact_text = ?, reasoning_summary_text = ?,
+              cwd = ?, model = ?, started_at = ?, ended_at = ?,
               message_count = ?, raw_file_mtime = ?, raw_file_size = ?, index_version = ?, updated_at = CURRENT_TIMESTAMP
           WHERE id = ?
         `,
@@ -143,6 +192,8 @@ export function replaceSession(
         session.filePath,
         session.title,
         session.summaryText,
+        session.compactText ?? "",
+        session.reasoningSummaryText ?? "",
         session.cwd,
         session.model,
         session.startedAt,
@@ -157,14 +208,17 @@ export function replaceSession(
       db.run(
         `
           INSERT INTO sessions (
-            session_uuid, file_path, title, summary_text, cwd, model, started_at, ended_at,
+            session_uuid, file_path, title, summary_text, compact_text, reasoning_summary_text,
+            cwd, model, started_at, ended_at,
             message_count, raw_file_mtime, raw_file_size, index_version
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         session.sessionUuid,
         session.filePath,
         session.title,
         session.summaryText,
+        session.compactText ?? "",
+        session.reasoningSummaryText ?? "",
         session.cwd,
         session.model,
         session.startedAt,
@@ -182,6 +236,20 @@ export function replaceSession(
 
     db.run("DELETE FROM messages_fts WHERE session_uuid = ?", session.sessionUuid);
     db.run("DELETE FROM messages WHERE session_uuid = ?", session.sessionUuid);
+    db.run("DELETE FROM sessions_fts WHERE rowid = ? OR session_uuid = ?", sessionRow.id, session.sessionUuid);
+
+    db.run(
+      `
+        INSERT INTO sessions_fts(rowid, title, summary_text, compact_text, reasoning_summary_text, session_uuid)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `,
+      sessionRow.id,
+      tokenizedText(session.title),
+      tokenizedText(session.summaryText),
+      tokenizedText(session.compactText ?? ""),
+      tokenizedText(session.reasoningSummaryText ?? ""),
+      session.sessionUuid,
+    );
 
     const messageStmt = db.prepare(`
       INSERT INTO messages (session_id, session_uuid, seq, role, content_text, timestamp, source_kind)

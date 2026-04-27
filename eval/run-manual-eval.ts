@@ -77,36 +77,18 @@ for (const [index, item] of queries.entries()) {
     top1Title: top?.title ?? "(none)",
   });
 
-  let readRangeJsonPath = "";
-  let readRangeTxtPath = "";
+  let contextJsonPath = "";
+  let contextTxtPath = "";
+  let contextKind = "";
   if (top) {
-    const readRangeJson = await runCommand([
-      "./bin/cxs",
-      "read-range",
-      top.sessionUuid,
-      "--seq",
-      String(top.matchSeq),
-      "--before",
-      "2",
-      "--after",
-      "2",
-      "--json",
-    ]);
-    const readRangeText = await runCommand([
-      "./bin/cxs",
-      "read-range",
-      top.sessionUuid,
-      "--seq",
-      String(top.matchSeq),
-      "--before",
-      "2",
-      "--after",
-      "2",
-    ]);
-    readRangeJsonPath = join(outDir, `${prefix}-${item.id}.read-range.json`);
-    readRangeTxtPath = join(outDir, `${prefix}-${item.id}.read-range.txt`);
-    writeFileSync(readRangeJsonPath, readRangeJson);
-    writeFileSync(readRangeTxtPath, readRangeText);
+    const contextCommand = buildTopContextCommand(top);
+    const contextJson = await runCommand([...contextCommand.args, "--json"]);
+    const contextText = await runCommand(contextCommand.args);
+    contextKind = contextCommand.kind;
+    contextJsonPath = join(outDir, `${prefix}-${item.id}.${contextKind}.json`);
+    contextTxtPath = join(outDir, `${prefix}-${item.id}.${contextKind}.txt`);
+    writeFileSync(contextJsonPath, contextJson);
+    writeFileSync(contextTxtPath, contextText);
   }
 
   indexLines.push(`## ${prefix}. ${item.query}`);
@@ -127,9 +109,11 @@ for (const [index, item] of queries.entries()) {
     indexLines.push(`- top1_session_uuid: \`${top.sessionUuid}\``);
     indexLines.push(`- top1_title: ${top.title}`);
     indexLines.push(`- top1_cwd: ${top.cwd || "-"}`);
+    indexLines.push(`- top1_match_source: ${top.matchSource}`);
     indexLines.push(`- top1_seq: ${top.matchSeq}`);
-    indexLines.push(`- read_range_json: \`${rel(readRangeJsonPath)}\``);
-    indexLines.push(`- read_range_txt: \`${rel(readRangeTxtPath)}\``);
+    indexLines.push(`- top1_context_kind: ${contextKind}`);
+    indexLines.push(`- top1_context_json: \`${rel(contextJsonPath)}\``);
+    indexLines.push(`- top1_context_txt: \`${rel(contextTxtPath)}\``);
   } else {
     indexLines.push("- top1: (none)");
   }
@@ -177,6 +161,38 @@ function formatPredicateResults(
   return predicateResults
     .map((predicate) => `${predicate.label}=${predicate.matched ? "ok" : "miss"}(${predicate.needle})`)
     .join(", ");
+}
+
+function buildTopContextCommand(top: FindResult): { kind: "read-range" | "read-page"; args: string[] } {
+  if (typeof top.matchSeq === "number") {
+    return {
+      kind: "read-range",
+      args: [
+        "./bin/cxs",
+        "read-range",
+        top.sessionUuid,
+        "--seq",
+        String(top.matchSeq),
+        "--before",
+        "2",
+        "--after",
+        "2",
+      ],
+    };
+  }
+
+  return {
+    kind: "read-page",
+    args: [
+      "./bin/cxs",
+      "read-page",
+      top.sessionUuid,
+      "--offset",
+      "0",
+      "--limit",
+      "20",
+    ],
+  };
 }
 
 async function runCommand(args: string[]): Promise<string> {

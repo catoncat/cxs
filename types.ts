@@ -1,4 +1,6 @@
 export type MessageRole = "user" | "assistant";
+export type MatchSource = "message" | "session";
+export type FindMatchRole = MessageRole | "session";
 
 export interface ParsedMessage {
   role: MessageRole;
@@ -13,6 +15,8 @@ export interface ParsedSession {
   filePath: string;
   title: string;
   summaryText: string;
+  compactText: string;
+  reasoningSummaryText: string;
   cwd: string;
   model: string;
   startedAt: string;
@@ -60,9 +64,10 @@ export interface FindResult {
   startedAt: string;
   endedAt: string;
   matchCount: number;
-  matchSeq: number;
-  matchRole: MessageRole;
-  matchTimestamp: string;
+  matchSource: MatchSource;
+  matchSeq: number | null;
+  matchRole: FindMatchRole;
+  matchTimestamp: string | null;
   score: number;
   snippet: string;
 }
@@ -85,6 +90,14 @@ export interface SessionListEntry {
   startedAt: string;
   endedAt: string;
   messageCount: number;
+}
+
+export interface CurrentSessionCandidate {
+  sessionUuid: string;
+  title: string;
+  cwd: string;
+  filePath: string;
+  updatedAtMs: number;
 }
 
 export type SessionListSort = "ended" | "started" | "messages";

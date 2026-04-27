@@ -13,6 +13,8 @@ const INTERNAL_MARKERS = [
 
 export async function parseCodexSession(filePath: string): Promise<ParseSessionResult> {
   const eventMessages: ParsedMessage[] = [];
+  const compactMessages: string[] = [];
+  const reasoningSummaries: string[] = [];
   let sessionUuid = extractSessionUuid(filePath);
   let cwd = "";
   let model = "";
@@ -51,6 +53,17 @@ export async function parseCodexSession(filePath: string): Promise<ParseSessionR
       continue;
     }
 
+    if (type === "compacted") {
+      const message = typeof payload.message === "string" ? payload.message.trim() : "";
+      if (message) compactMessages.push(message);
+      continue;
+    }
+
+    if (type === "response_item" && payload.type === "reasoning") {
+      reasoningSummaries.push(...extractReasoningSummaryText(payload.summary));
+      continue;
+    }
+
     if (type !== "event_msg") continue;
     const msgType = typeof payload.type === "string" ? payload.type : "";
     if (msgType !== "user_message" && msgType !== "agent_message") continue;
@@ -84,6 +97,8 @@ export async function parseCodexSession(filePath: string): Promise<ParseSessionR
       filePath,
       title,
       summaryText: buildSessionSummary(eventMessages),
+      compactText: buildCompactText(compactMessages),
+      reasoningSummaryText: buildReasoningSummaryText(reasoningSummaries),
       cwd,
       model,
       startedAt: timestamps[0] ?? new Date().toISOString(),
@@ -119,6 +134,39 @@ function buildSessionSummary(messages: ParsedMessage[]): string {
   ].filter(Boolean);
 
   return parts.join(" | ").slice(0, 480);
+}
+
+function buildCompactText(messages: string[]): string {
+  return normalizeUniqueText(messages).slice(0, 4_000);
+}
+
+function buildReasoningSummaryText(summaries: string[]): string {
+  return normalizeUniqueText(summaries).slice(0, 4_000);
+}
+
+function normalizeUniqueText(values: string[]): string {
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  for (const value of values) {
+    const normalized = normalizeSummaryText(value);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    parts.push(normalized);
+  }
+  return parts.join(" | ");
+}
+
+function extractReasoningSummaryText(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+
+  const summaries: string[] = [];
+  for (const item of value) {
+    if (!isRecord(item)) continue;
+    if (typeof item.text === "string" && item.text.trim()) {
+      summaries.push(item.text);
+    }
+  }
+  return summaries;
 }
 
 function normalizeSummaryText(text: string): string {

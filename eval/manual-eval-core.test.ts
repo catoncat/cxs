@@ -70,6 +70,7 @@ function findResult(
     startedAt: "2026-04-22T00:00:00.000Z",
     endedAt: "2026-04-22T00:00:00.000Z",
     matchCount: 1,
+    matchSource: "message",
     matchSeq: 0,
     matchRole: "user",
     matchTimestamp: "2026-04-22T00:00:00.000Z",

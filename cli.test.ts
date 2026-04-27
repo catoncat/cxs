@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { chmodSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { INDEX_VERSION } from "./env";
 import { syncSessions } from "./indexer";
 
 const tempDirs: string[] = [];
@@ -21,9 +23,10 @@ afterEach(() => {
 });
 
 describe("cxs cli", () => {
-  test("help only shows sync/find/read-range/read-page/list/stats", async () => {
+  test("help only shows current/sync/find/read-range/read-page/list/stats", async () => {
     const result = await runCli(["--help"]);
     expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("current");
     expect(result.stdout).toContain("sync");
     expect(result.stdout).toContain("find");
     expect(result.stdout).toContain("read-range");
@@ -32,6 +35,59 @@ describe("cxs cli", () => {
     expect(result.stdout).toContain("stats");
     expect(result.stdout).not.toContain("window");
     expect(result.stdout).not.toContain("\n  session ");
+  });
+
+  test("current returns candidate sessions for cwd from state db", async () => {
+    const base = mkdtempSync(join(tmpdir(), "cxs-cli-current-"));
+    tempDirs.push(base);
+    const stateDbPath = join(base, "state.sqlite");
+    const db = new Database(stateDbPath);
+    db.run(`
+      CREATE TABLE threads (
+        id TEXT PRIMARY KEY,
+        rollout_path TEXT NOT NULL,
+        cwd TEXT NOT NULL,
+        title TEXT NOT NULL,
+        updated_at_ms INTEGER
+      )
+    `);
+    db.run(
+      "INSERT INTO threads (id, rollout_path, cwd, title, updated_at_ms) VALUES (?, ?, ?, ?, ?)",
+      "aaaa1111-1111-4111-8111-111111111111",
+      "/tmp/one.jsonl",
+      "/tmp/picc",
+      "older",
+      100,
+    );
+    db.run(
+      "INSERT INTO threads (id, rollout_path, cwd, title, updated_at_ms) VALUES (?, ?, ?, ?, ?)",
+      "bbbb2222-2222-4222-8222-222222222222",
+      "/tmp/two.jsonl",
+      "/tmp/picc",
+      "newer",
+      200,
+    );
+    db.close();
+
+    const result = await runCli([
+      "current",
+      "--cwd",
+      "/tmp/picc",
+      "--state-db",
+      stateDbPath,
+      "--json",
+    ]);
+    expect(result.exitCode).toBe(0);
+    const payload = JSON.parse(result.stdout) as {
+      cwd: string;
+      candidates: Array<{ sessionUuid: string; filePath: string }>;
+    };
+    expect(payload.cwd).toBe("/tmp/picc");
+    expect(payload.candidates.map((candidate) => candidate.sessionUuid)).toEqual([
+      "bbbb2222-2222-4222-8222-222222222222",
+      "aaaa1111-1111-4111-8111-111111111111",
+    ]);
+    expect(payload.candidates[0]?.filePath).toBe("/tmp/two.jsonl");
   });
 
   test("find text output points to read-range", async () => {
@@ -122,7 +178,7 @@ describe("cxs cli", () => {
     };
     expect(payload.sessionCount).toBe(1);
     expect(payload.messageCount).toBe(2);
-    expect(payload.indexVersion).toContain("cxs-v3");
+    expect(payload.indexVersion).toBe(INDEX_VERSION);
     expect(payload.topCwds[0]?.cwd).toBe("/tmp/gamma");
   });
 
