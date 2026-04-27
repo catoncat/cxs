@@ -1,2 +1,6 @@
 node_modules/
 data/
+.claude/
+.entire/
+.intent/
+research/

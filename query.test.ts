@@ -35,27 +35,15 @@ describe("cxs retrieval flow", () => {
     `);
     db.run(
       "INSERT INTO threads (id, rollout_path, cwd, title, updated_at_ms) VALUES (?, ?, ?, ?, ?)",
-      "11111111-1111-4111-8111-111111111111",
-      "/tmp/a.jsonl",
-      "/tmp/project",
-      "older",
-      100,
+      ["11111111-1111-4111-8111-111111111111", "/tmp/a.jsonl", "/tmp/project", "older", 100],
     );
     db.run(
       "INSERT INTO threads (id, rollout_path, cwd, title, updated_at_ms) VALUES (?, ?, ?, ?, ?)",
-      "22222222-2222-4222-8222-222222222222",
-      "/tmp/b.jsonl",
-      "/tmp/project",
-      "newer",
-      200,
+      ["22222222-2222-4222-8222-222222222222", "/tmp/b.jsonl", "/tmp/project", "newer", 200],
     );
     db.run(
       "INSERT INTO threads (id, rollout_path, cwd, title, updated_at_ms) VALUES (?, ?, ?, ?, ?)",
-      "33333333-3333-4333-8333-333333333333",
-      "/tmp/c.jsonl",
-      "/tmp/other",
-      "other",
-      300,
+      ["33333333-3333-4333-8333-333333333333", "/tmp/c.jsonl", "/tmp/other", "other", 300],
     );
     db.close();
 
@@ -247,7 +235,7 @@ describe("cxs retrieval flow", () => {
 
     const db = openReadDb(dbPath);
     const row = db
-      .query("SELECT summary_text AS summaryText FROM sessions WHERE session_uuid = ? LIMIT 1")
+      .query<{ summaryText: string }, [string]>("SELECT summary_text AS summaryText FROM sessions WHERE session_uuid = ? LIMIT 1")
       .get("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee") as { summaryText: string } | null;
     db.close();
 
@@ -271,6 +259,8 @@ describe("cxs retrieval flow", () => {
         filePath: join(base, "rollout.jsonl"),
         title: "设置 ChatGPT 订阅取消提醒",
         summaryText: "user: billing reminder | assistant: schedule a local notification",
+        compactText: "",
+        reasoningSummaryText: "",
         cwd: "/tmp/title-only",
         model: "gpt-5.4",
         startedAt: "2026-04-24T01:00:00.000Z",

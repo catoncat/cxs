@@ -1,4 +1,5 @@
 import { readdirSync, statSync } from "node:fs";
+import type { Dirent } from "node:fs";
 import { join } from "node:path";
 import { DEFAULT_DB_PATH, INDEX_VERSION, ensureDataDir, resolveCodexDir } from "./env";
 import { deleteSessionByFilePath, getIndexedSessionMeta, openWriteDb, replaceSession } from "./db";
@@ -123,7 +124,7 @@ function collectJsonlFiles(rootDir: string): string[] {
 }
 
 function walk(currentDir: string, files: string[]): void {
-  let entries: ReturnType<typeof readdirSync>;
+  let entries: Dirent<string>[];
   try {
     entries = readdirSync(currentDir, { withFileTypes: true });
   } catch {

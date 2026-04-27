@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { Database } from "bun:sqlite";
+import type { SQLQueryBindings } from "bun:sqlite";
 import { tokenizedText } from "./tokenize";
 import type {
   CwdCount,
@@ -12,6 +13,7 @@ import type {
 
 const CUSTOM_SQLITE = "/opt/homebrew/opt/sqlite/lib/libsqlite3.dylib";
 const BUSY_TIMEOUT_MS = 5000;
+type SqlParams = SQLQueryBindings[];
 
 if (existsSync(CUSTOM_SQLITE)) {
   Database.setCustomSQLite(CUSTOM_SQLITE);
@@ -138,7 +140,7 @@ export function getIndexedSessionMeta(
   filePath: string,
 ): { rawFileMtime: number; rawFileSize: number; indexVersion: string } | null {
   const row = db
-    .query(`
+    .query<{ rawFileMtime: number; rawFileSize: number; indexVersion: string }, [string]>(`
       SELECT raw_file_mtime AS rawFileMtime, raw_file_size AS rawFileSize, index_version AS indexVersion
       FROM sessions
       WHERE file_path = ?
@@ -153,7 +155,7 @@ export function getIndexedSessionMeta(
 
 export function deleteSessionByFilePath(db: Database, filePath: string): void {
   const row = db
-    .query("SELECT session_uuid AS sessionUuid FROM sessions WHERE file_path = ? LIMIT 1")
+    .query<{ sessionUuid: string }, [string]>("SELECT session_uuid AS sessionUuid FROM sessions WHERE file_path = ? LIMIT 1")
     .get(filePath) as { sessionUuid: string } | null;
 
   if (!row) return;
@@ -161,10 +163,10 @@ export function deleteSessionByFilePath(db: Database, filePath: string): void {
 }
 
 function deleteSessionByUuid(db: Database, sessionUuid: string): void {
-  db.run("DELETE FROM sessions_fts WHERE session_uuid = ?", sessionUuid);
-  db.run("DELETE FROM messages_fts WHERE session_uuid = ?", sessionUuid);
-  db.run("DELETE FROM messages WHERE session_uuid = ?", sessionUuid);
-  db.run("DELETE FROM sessions WHERE session_uuid = ?", sessionUuid);
+  db.run("DELETE FROM sessions_fts WHERE session_uuid = ?", [sessionUuid]);
+  db.run("DELETE FROM messages_fts WHERE session_uuid = ?", [sessionUuid]);
+  db.run("DELETE FROM messages WHERE session_uuid = ?", [sessionUuid]);
+  db.run("DELETE FROM sessions WHERE session_uuid = ?", [sessionUuid]);
 }
 
 export function replaceSession(
@@ -176,7 +178,7 @@ export function replaceSession(
 ): void {
   const tx = db.transaction(() => {
     const existing = db
-      .query("SELECT id FROM sessions WHERE session_uuid = ? OR file_path = ? LIMIT 1")
+      .query<{ id: number }, [string, string]>("SELECT id FROM sessions WHERE session_uuid = ? OR file_path = ? LIMIT 1")
       .get(session.sessionUuid, session.filePath) as { id: number } | null;
 
     if (existing) {
@@ -188,21 +190,23 @@ export function replaceSession(
               message_count = ?, raw_file_mtime = ?, raw_file_size = ?, index_version = ?, updated_at = CURRENT_TIMESTAMP
           WHERE id = ?
         `,
-        session.sessionUuid,
-        session.filePath,
-        session.title,
-        session.summaryText,
-        session.compactText ?? "",
-        session.reasoningSummaryText ?? "",
-        session.cwd,
-        session.model,
-        session.startedAt,
-        session.endedAt,
-        session.messages.length,
-        rawFileMtime,
-        rawFileSize,
-        indexVersion,
-        existing.id,
+        [
+          session.sessionUuid,
+          session.filePath,
+          session.title,
+          session.summaryText,
+          session.compactText ?? "",
+          session.reasoningSummaryText ?? "",
+          session.cwd,
+          session.model,
+          session.startedAt,
+          session.endedAt,
+          session.messages.length,
+          rawFileMtime,
+          rawFileSize,
+          indexVersion,
+          existing.id,
+        ],
       );
     } else {
       db.run(
@@ -213,49 +217,53 @@ export function replaceSession(
             message_count, raw_file_mtime, raw_file_size, index_version
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
-        session.sessionUuid,
-        session.filePath,
-        session.title,
-        session.summaryText,
-        session.compactText ?? "",
-        session.reasoningSummaryText ?? "",
-        session.cwd,
-        session.model,
-        session.startedAt,
-        session.endedAt,
-        session.messages.length,
-        rawFileMtime,
-        rawFileSize,
-        indexVersion,
+        [
+          session.sessionUuid,
+          session.filePath,
+          session.title,
+          session.summaryText,
+          session.compactText ?? "",
+          session.reasoningSummaryText ?? "",
+          session.cwd,
+          session.model,
+          session.startedAt,
+          session.endedAt,
+          session.messages.length,
+          rawFileMtime,
+          rawFileSize,
+          indexVersion,
+        ],
       );
     }
 
     const sessionRow = db
-      .query("SELECT id FROM sessions WHERE session_uuid = ? LIMIT 1")
+      .query<{ id: number }, [string]>("SELECT id FROM sessions WHERE session_uuid = ? LIMIT 1")
       .get(session.sessionUuid) as { id: number };
 
-    db.run("DELETE FROM messages_fts WHERE session_uuid = ?", session.sessionUuid);
-    db.run("DELETE FROM messages WHERE session_uuid = ?", session.sessionUuid);
-    db.run("DELETE FROM sessions_fts WHERE rowid = ? OR session_uuid = ?", sessionRow.id, session.sessionUuid);
+    db.run("DELETE FROM messages_fts WHERE session_uuid = ?", [session.sessionUuid]);
+    db.run("DELETE FROM messages WHERE session_uuid = ?", [session.sessionUuid]);
+    db.run("DELETE FROM sessions_fts WHERE rowid = ? OR session_uuid = ?", [sessionRow.id, session.sessionUuid]);
 
     db.run(
       `
         INSERT INTO sessions_fts(rowid, title, summary_text, compact_text, reasoning_summary_text, session_uuid)
         VALUES (?, ?, ?, ?, ?, ?)
       `,
-      sessionRow.id,
-      tokenizedText(session.title),
-      tokenizedText(session.summaryText),
-      tokenizedText(session.compactText ?? ""),
-      tokenizedText(session.reasoningSummaryText ?? ""),
-      session.sessionUuid,
+      [
+        sessionRow.id,
+        tokenizedText(session.title),
+        tokenizedText(session.summaryText),
+        tokenizedText(session.compactText ?? ""),
+        tokenizedText(session.reasoningSummaryText ?? ""),
+        session.sessionUuid,
+      ],
     );
 
-    const messageStmt = db.prepare(`
+    const messageStmt = db.prepare<unknown, [number, string, number, string, string, string, string]>(`
       INSERT INTO messages (session_id, session_uuid, seq, role, content_text, timestamp, source_kind)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
-    const ftsStmt = db.prepare(`
+    const ftsStmt = db.prepare<unknown, [number, string, string, number, string, string]>(`
       INSERT INTO messages_fts(rowid, content_text, session_uuid, seq, role, timestamp)
       VALUES (?, ?, ?, ?, ?, ?)
     `);
@@ -290,7 +298,7 @@ export function replaceSession(
 
 export function getSessionRecord(db: Database, sessionUuid: string): SessionRecord | null {
   const row = db
-    .query(`
+    .query<SessionRecord & { filePath: string }, [string]>(`
       SELECT
         session_uuid AS sessionUuid,
         file_path AS filePath,
@@ -327,7 +335,7 @@ export function getMessagesForRange(
   endSeq: number,
 ): MessageRecord[] {
   return db
-    .query(`
+    .query<MessageRecord, [string, number, number]>(`
       SELECT
         session_uuid AS sessionUuid,
         seq,
@@ -349,7 +357,7 @@ export function getMessagesForPage(
   limit: number,
 ): MessageRecord[] {
   return db
-    .query(`
+    .query<MessageRecord, [string, number, number]>(`
       SELECT
         session_uuid AS sessionUuid,
         seq,
@@ -367,7 +375,7 @@ export function getMessagesForPage(
 
 export function listSessions(db: Database, query: SessionListQuery): SessionListEntry[] {
   const conditions: string[] = [];
-  const params: Array<string | number> = [];
+  const params: SqlParams = [];
   if (query.cwd) {
     // Substring match rather than prefix/equality: agent callers often pass
     // the trailing segment of a project path, not the full canonical path.
@@ -389,7 +397,7 @@ export function listSessions(db: Database, query: SessionListQuery): SessionList
   params.push(query.limit);
 
   return db
-    .query(`
+    .query<SessionListEntry, typeof params>(`
       SELECT
         session_uuid AS sessionUuid,
         title,
@@ -435,7 +443,7 @@ export function getStatsCounts(db: Database): {
 
 export function getTopCwds(db: Database, limit: number): CwdCount[] {
   return db
-    .query(`
+    .query<CwdCount, [number]>(`
       SELECT cwd, COUNT(*) AS count
       FROM sessions
       WHERE cwd != ''

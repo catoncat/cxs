@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { evaluateManualQuery } from "./manual-eval-core";
+import type { FindResult } from "../types";
 
 describe("evaluateManualQuery", () => {
   test("requires every configured predicate to match somewhere in top-k", () => {
@@ -60,7 +61,7 @@ function findResult(
     cwd: string;
     snippet: string;
   }> = {},
-) {
+): FindResult {
   return {
     rank: overrides.rank ?? 1,
     sessionUuid: overrides.sessionUuid ?? "session-a",

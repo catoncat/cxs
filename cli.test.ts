@@ -53,19 +53,11 @@ describe("cxs cli", () => {
     `);
     db.run(
       "INSERT INTO threads (id, rollout_path, cwd, title, updated_at_ms) VALUES (?, ?, ?, ?, ?)",
-      "aaaa1111-1111-4111-8111-111111111111",
-      "/tmp/one.jsonl",
-      "/tmp/picc",
-      "older",
-      100,
+      ["aaaa1111-1111-4111-8111-111111111111", "/tmp/one.jsonl", "/tmp/picc", "older", 100],
     );
     db.run(
       "INSERT INTO threads (id, rollout_path, cwd, title, updated_at_ms) VALUES (?, ?, ?, ?, ?)",
-      "bbbb2222-2222-4222-8222-222222222222",
-      "/tmp/two.jsonl",
-      "/tmp/picc",
-      "newer",
-      200,
+      ["bbbb2222-2222-4222-8222-222222222222", "/tmp/two.jsonl", "/tmp/picc", "newer", 200],
     );
     db.close();
 

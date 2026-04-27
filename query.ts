@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+import type { SQLQueryBindings } from "bun:sqlite";
 import { statSync } from "node:fs";
 import {
   getMessagesForPage,
@@ -23,6 +24,7 @@ import type {
 } from "./types";
 
 export { classifyQueryProfile } from "./ranking";
+type SqlParams = SQLQueryBindings[];
 
 export function findSessions(
   dbPath: string,
@@ -109,7 +111,7 @@ export function getCurrentSessions(
   const db = new Database(stateDbPath, { readonly: true });
   try {
     const candidates = db
-      .query(`
+      .query<CurrentSessionCandidate, [string, number]>(`
         SELECT
           id AS sessionUuid,
           title,
@@ -166,7 +168,7 @@ function resolveAnchorSeq(
 
   if (query) {
     const best = searchTopHitInSession(db, sessionUuid, query);
-    if (best) return best.matchSeq;
+    if (best && typeof best.matchSeq === "number") return best.matchSeq;
   }
 
   throw new Error("read-range requires explicit session_uuid plus either --seq or --query");
@@ -213,7 +215,7 @@ function searchByFts(
 ): RawHitRow[] {
   const matchExpr = buildFtsMatch(terms);
   const conditions = [`messages_fts MATCH ?`];
-  const params: Array<string | number> = [matchExpr];
+  const params: SqlParams = [matchExpr];
 
   if (sessionUuid) {
     conditions.push("m.session_uuid = ?");
@@ -222,7 +224,7 @@ function searchByFts(
   params.push(limit);
 
   return db
-    .query(`
+    .query<RawHitRow, typeof params>(`
       SELECT
         s.session_uuid AS sessionUuid,
         s.title AS title,
@@ -255,7 +257,7 @@ function searchSessionsByFts(
 ): RawHitRow[] {
   const matchExpr = buildFtsMatch(terms);
   const rows = db
-    .query(`
+    .query<RawHitRow, [string, number]>(`
       SELECT
         s.session_uuid AS sessionUuid,
         s.title AS title,
@@ -286,7 +288,7 @@ function searchSessionsByFts(
 
 function searchByLike(db: Database, query: string, limit: number, sessionUuid?: string): RawHitRow[] {
   const conditions = ["lower(m.content_text) LIKE ? ESCAPE '\\'"];
-  const params: Array<string | number> = [`%${escapeLike(query.toLowerCase())}%`];
+  const params: SqlParams = [`%${escapeLike(query.toLowerCase())}%`];
   if (sessionUuid) {
     conditions.push("m.session_uuid = ?");
     params.push(sessionUuid);
@@ -294,7 +296,7 @@ function searchByLike(db: Database, query: string, limit: number, sessionUuid?: 
   params.push(limit);
 
   const rows = db
-    .query(`
+    .query<RawHitRow & { contentText: string }, typeof params>(`
       SELECT
         s.session_uuid AS sessionUuid,
         s.title AS title,
@@ -327,7 +329,7 @@ function searchByLike(db: Database, query: string, limit: number, sessionUuid?: 
 
 function tableExists(db: Database, tableName: string): boolean {
   const row = db
-    .query("SELECT 1 FROM sqlite_master WHERE name = ? LIMIT 1")
+    .query<unknown, [string]>("SELECT 1 FROM sqlite_master WHERE name = ? LIMIT 1")
     .get(tableName);
   return Boolean(row);
 }
