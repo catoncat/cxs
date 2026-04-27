@@ -92,3 +92,34 @@ jobs:
           generate_release_notes: true
           files: dist/cxs-*
           fail_on_unmatched_files: true
+
+  publish-npm:
+    name: publish to npm
+    runs-on: ubuntu-latest
+    # Decoupled from binary build: npm publish has its own prepublishOnly
+    # build (esbuild bundle) and runs in parallel. NPM_TOKEN must be a
+    # granular access token with "Allow publishing without 2FA" enabled.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # setup-node before setup-bun so that node + the .npmrc with the auth
+      # token win on PATH for `npm publish`.
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Publish
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
