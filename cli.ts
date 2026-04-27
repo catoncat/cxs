@@ -3,7 +3,17 @@
 import { existsSync } from "node:fs";
 import { Command } from "commander";
 import packageJson from "./package.json" with { type: "json" };
-import { DEFAULT_CODEX_STATE_DB_PATH, DEFAULT_DB_PATH, resolveCodexDir } from "./env";
+import {
+  DEFAULT_CODEX_STATE_DB_PATH,
+  DEFAULT_DB_PATH,
+  migrateLegacyCacheDirIfNeeded,
+  resolveCodexDir,
+} from "./env";
+
+// One-shot migration from legacy ~/.cache/cxs/ to ~/.local/state/cxs/. Runs
+// before any subcommand so `cxs stats` etc. see the migrated db, not just
+// `cxs sync`. Idempotent + silent on failure (worst case is a re-sync).
+migrateLegacyCacheDirIfNeeded();
 import {
   printCurrentSessions,
   printFindResults,

@@ -76,11 +76,13 @@ cxs stats --json
 
 ### 数据目录
 
-索引默认写到 `~/.cache/cxs/index.sqlite`(XDG cache 约定),可用 `CXS_DATA_DIR` 环境变量覆盖:
+索引默认写到 `~/.local/state/cxs/index.sqlite`(XDG state 约定;`$XDG_STATE_HOME` 也尊重)。`CXS_DATA_DIR` 环境变量优先级最高:
 
 ```bash
 export CXS_DATA_DIR="$HOME/.config/cxs"
 ```
+
+**自动迁移**:之前装过 cxs 0.2.0 及以下、索引在 `~/.cache/cxs/` 的用户,首次跑新版 `cxs sync` 会自动 `rename` 整个目录到 `~/.local/state/cxs/`,**不需要重 sync**(240 MB 索引不会重建)。如果新位置已有数据,迁移跳过,旧 cache 留在原地等用户手动处理。
 
 ### 要求
 
