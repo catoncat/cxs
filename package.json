@@ -44,7 +44,8 @@
     "test": "bun test",
     "check": "tsc --noEmit && bun test",
     "cxs": "bun run ./cli.ts",
-    "eval:manual": "bun run ./eval/run-manual-eval.ts"
+    "eval:manual": "bun run ./eval/run-manual-eval.ts",
+    "eval:perf": "bun run ./eval/perf-bench.ts"
   },
   "dependencies": {
     "chalk": "^5.6.2",
