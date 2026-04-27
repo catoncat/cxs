@@ -23,13 +23,16 @@ Top-level shape:
   startedAt: string;
   endedAt: string;
   matchCount: number;
-  matchSeq: number;
-  matchRole: "user" | "assistant";
-  matchTimestamp: string;
+  matchSource: "message" | "session";
+  matchSeq: number | null;
+  matchRole: "user" | "assistant" | "session";
+  matchTimestamp: string | null;
   score: number;
   snippet: string;
 }
 ```
+
+`matchSource = "session"` means the hit came from session-level fields such as title, derived summary, compact handoff, or reasoning summary rather than a concrete message. In that case `matchSeq` is `null`; use `read-page` first instead of fabricating a `read-range --seq` anchor.
 
 ## read-range
 

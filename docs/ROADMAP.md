@@ -2,7 +2,7 @@
 
 ## 当前判断
 
-`cxs` 现在已经有一条可用的 retrieval 主链，但下一步不该盲目继续堆排序逻辑。当前最缺的是一个更可信的 acceptance gate。
+`cxs` 现在已经有一条可用的 retrieval 主链。`title + summary_text + compact_text + reasoning_summary_text` 已作为 session-level recall 面接入，并通过 FTS5 column weights 显式分权；下一步仍不该盲目继续堆排序逻辑，当前最缺的是更可信的 acceptance gate。
 
 ## 优先级
 
@@ -29,23 +29,27 @@
   - `bun run eval:manual`
   - `bun run ./eval/compare-eval-batches.ts <before> <after>`
 
-### P1: 再决定是否补 summary recall
+### P1: 已补 session-level 字段召回
 
-目标：解决“正文不命中、只有 summary 命中”的 recall 漏洞。
+目标：解决“正文不命中、只有 title / summary / compact handoff 命中”的 recall 漏洞。
 
 当前现状：
 
-- `summary_text` 已生成、已持久化、已参与 rerank
-- 但 `find` 的候选仍只来自 `messages_fts` / LIKE
+- `messages_fts` 负责真实 message evidence recall
+- `sessions_fts(title + summary_text + compact_text + reasoning_summary_text)` 负责 session-level recall
+- 字段权重固定为：title 8.0、compact 4.0、summary 3.0、reasoning summary 1.2
+- session-only 命中返回 `matchSource = "session"`，且 `matchSeq = null`
+- CLI 对 session-only 命中建议 `read-page`，不伪造 `read-range --seq`
 
-候选实现方向：
+已经排除：
 
-- 方案 A：把 summary 作为虚拟 message 写入 `messages` + `messages_fts`
-- 方案 B：新增 `sessions_fts(title + summary_text)`，`find` 时 UNION 两路候选
+- 不把 summary 写成 `seq = -1` 的虚拟 message
+- 不新增 `session_projections` 业务表
 
-当前不把它排到 P0 的原因：
+后续需要补：
 
-- [docs/TODO.md](/Users/envvar/work/repos/cxs/docs/TODO.md) 记录的现有 eval 里，还没观察到明显 recall 漏洞
+- 把 title/summary/compact-only query 加进 manual eval
+- 对 session-only 命中补专门断言
 
 ### P2: 真正的 query profile 分流
 

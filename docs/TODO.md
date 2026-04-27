@@ -16,21 +16,24 @@
 - 对 `read-range` 可用性的断言
 - 更清晰的 failure taxonomy
 
-## P1: summary 参与 recall
+## P1: session-level recall 后续补强
 
-当前 `sessions.summary_text` 已经生成、存库、参与 rerank，但没有进 recall 面。
+当前 `sessions.summary_text`、`sessions.compact_text`、`sessions.reasoning_summary_text` 已经生成、存库，并通过 `sessions_fts(title + summary_text + compact_text + reasoning_summary_text)` 进入 recall 面。
 
-这意味着：如果一个 session 的正文和 query 不重合，只有 summary 命中，它当前不会被 `find` 召回。
+已定边界：
 
-候选方案：
+- `messages` 仍只保存真实可回读消息
+- compact handoff 与 reasoning summary 只作为 session-level 检索信号，不写成可回读 message
+- session-level FTS 字段权重固定为：title 8.0、compact 4.0、summary 3.0、reasoning summary 1.2
+- session-only 命中返回 `matchSource = "session"` 和 `matchSeq = null`
+- 不插入 `seq = -1` 虚拟 message
+- 不新增 `session_projections` 业务表
 
-- 插入一条 `seq = -1`、`role = "summary"` 的虚拟 message 进 `messages` + `messages_fts`
-- 或者新建 `sessions_fts(title + summary_text)`，`find` 时 UNION 两路候选
+下一步应该补：
 
-当前仍不优先的原因：
-
-- 现有 eval 下还没观察到明显 recall 漏洞
-- 在更强 eval 就位前，先改 recall 面容易变成“改了很多，但证据不够硬”
+- 把 title/summary/compact-only query 写进 manual eval
+- 增加对 `matchSource` / `matchSeq = null` 的断言
+- 继续观察 session-level recall 是否引入排序噪音
 
 ## P2: 真正接通 broad / exact query 分流
 

@@ -28,6 +28,7 @@
 - `cxs read-page <sessionUuid>`
 - `cxs list`
 - `cxs stats`
+- `cxs current`
 
 ## 安装
 
@@ -72,7 +73,7 @@ export CXS_BIN="$PWD/bin/cxs"
 ./bin/cxs find "health check"
 ```
 
-`find` 会返回标题、派生的 session summary，以及当前锚点 snippet，方便先做轻量筛选再决定是否 `read-range`。
+`find` 会返回标题、派生的 session summary，以及当前锚点 snippet，方便先做轻量筛选再决定是否 `read-range`。如果命中只来自 session-level title/summary/compact/reasoning summary，结果会标为 `matchSource = "session"`，这时先用 `read-page` 浏览整场会话。
 
 围绕命中点读取局部上下文：
 
@@ -121,19 +122,20 @@ bun install
 
 当前 retrieval 主链是：
 
-`message recall -> session heuristic rerank -> read-range/read-page`
+`message/session recall -> session heuristic rerank -> read-range/read-page`
 
 已经落地的能力：
 
 - `messages_fts` 驱动的候选召回
+- `sessions_fts(title + summary_text + compact_text + reasoning_summary_text)` 驱动的 session-level 召回
 - `summary_text` 派生摘要
+- JSONL `type=compacted` handoff 与 `response_item.reasoning.summary` 低成本接入
+- session-level FTS 字段权重：title 8.0、compact 4.0、summary 3.0、reasoning summary 1.2
 - session 级 heuristic rerank
 - manual eval 导出与 batch compare
 
 还没落地的能力：
 
-- `summary_text` 参与 recall
-- 独立的 session/resource 级搜索面
 - 真正的 resource-level reranker
 - duplicate collapse / diversity control
 

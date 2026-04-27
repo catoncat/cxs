@@ -85,6 +85,7 @@ CLI install guide: https://github.com/catoncat/cxs#cli-install-guide
 先看这些字段：
 
 - `results[].sessionUuid`
+- `results[].matchSource`
 - `results[].matchSeq`
 - `results[].cwd`
 - `results[].startedAt`
@@ -113,6 +114,7 @@ CLI install guide: https://github.com/catoncat/cxs#cli-install-guide
 工作流心法：
 
 - 永远先 `find`，不要直接 `read-page`
+- `matchSource=session` 表示命中来自 title / summary / compact / reasoning summary 等 session-level 字段，且 `matchSeq=null`；这种结果先 `read-page`，不要伪造 `read-range --seq`
 - 升级到 `read-page` 之前，先尝试放大 `--before/--after`
 - 用户给出 `cwd` 或时间窗口时，优先 `list` 缩范围再 `read-range --query`
 - `cwd` 只是候选过滤，不是主题真相；还要再看 `title`、`summaryText`、开头几条 message
@@ -120,7 +122,7 @@ CLI install guide: https://github.com/catoncat/cxs#cli-install-guide
 
 ## JSON 模式速查
 
-- `find --json`：顶层是 `{ query, results }`
+- `find --json`：顶层是 `{ query, results }`；重点看 `sessionUuid`、`matchSource`、`matchSeq`、`summaryText`、`snippet`
 - `read-range --json`：重点看 `anchorSeq`、`rangeStartSeq`、`rangeEndSeq`、`messages[]`
 - `read-page --json`：重点看 `offset`、`limit`、`totalCount`、`hasMore`
 - `list --json`：重点看 `results[].cwd`、`startedAt`、`endedAt`、`messageCount`

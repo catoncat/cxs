@@ -6,7 +6,7 @@
 
 当前接受的产品边界：
 
-- 命令面固定为：`sync`、`find`、`read-range`、`read-page`、`list`、`stats`
+- 命令面固定为：`current`、`sync`、`find`、`read-range`、`read-page`、`list`、`stats`
 - 主工作流固定为：`sync -> find -> read-range/read-page`
 - `sync` 是唯一会修改索引的命令；其余命令只读 SQLite
 - 默认接受手动增量同步，不做 watcher / daemon / realtime sync
@@ -14,16 +14,16 @@
 
 ## 当前实现真相
 
-- 检索主链是 `message recall -> session heuristic rerank -> progressive read`
-- 候选召回来自 `messages_fts`，极少数零 token CJK query 会回退到 LIKE
-- `summary_text` 已持久化，也会参与结果展示和 rerank，但还没有进入 recall 面
+- 检索主链是 `message/session recall -> session heuristic rerank -> progressive read`
+- 候选召回来自 `messages_fts` 与 `sessions_fts(title + summary_text + compact_text + reasoning_summary_text)`；极少数零 token CJK query 在 message 侧回退到 LIKE
+- `summary_text`、`compact_text`、`reasoning_summary_text` 已持久化，也会通过 `sessions_fts` 参与 session-level recall
+- session-level FTS 使用显式字段权重：title 8.0、compact 4.0、summary 3.0、reasoning summary 1.2
 - `classifyQueryProfile()` 仍存在，但当前评分没有按 `broad/exact` 做显式分权
-- parser 只入库 `event_msg` 里的 user / assistant message；其他 event 不形成 projection
+- parser 只把 `event_msg` 里的 user / assistant 写入 `messages`；`type=compacted` 与 `response_item.reasoning.summary` 只进入 session-level 索引字段，不形成可回读 message projection
 
 不要把下面这些说成已完成：
 
 - 真正独立的 stage-2 / resource-level reranker
-- `summary_text` 或 session/resource 级独立 FTS recall
 - richer projection / range cache / event-level replay
 - duplicate family collapse / diversity control
 - 强约束的 gold set / rubric / error taxonomy
@@ -74,7 +74,7 @@ npx skills add catoncat/cxs --skill cxs -g -a codex -y
 ## 当前近端优先级
 
 1. 先把 eval 从弱提示升级成更可信的 acceptance gate
-2. 再决定是否推进 `summary/projection` 独立 recall 面
+2. 继续观察 session-level 字段召回是否引入排序噪音，并补 eval 覆盖
 3. 更重的 reranker / projection / diversity 控制放后面
 
 具体 roadmap 见 [docs/ROADMAP.md](/Users/envvar/work/repos/cxs/docs/ROADMAP.md)。
