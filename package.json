@@ -1,5 +1,5 @@
 {
-  "name": "@catoncat/cxs",
+  "name": "@act0r/cxs",
   "version": "0.2.0",
   "type": "module",
   "description": "Progressive search CLI for local Codex session logs",
