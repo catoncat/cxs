@@ -68,10 +68,15 @@ function releaseSyncLock(lockPath: string, lockInfo: SyncLockInfo): void {
   removeLockIfPresent(lockPath);
 }
 
-// Why: avoid TOCTOU when clearing a stale lock. Between our `existing` read
-// and the actual `rmSync` call, another sync process can re-create the lock.
-// Re-read and compare pid+createdAt: only delete the lock file if it's still
-// the same one we judged dead. Exported for unit tests.
+// Best-effort mitigation, NOT an atomic TOCTOU fix. The race window between
+// our initial read and rmSync is narrowed (we re-read and bail if the lock
+// no longer matches `expected`), but a residual window remains: between our
+// re-read and the path-based rmSync, another process can still delete the
+// stale lock and create a fresh one — we'd then unlink that fresh lock by
+// path. node:fs has no inode-pinned unlink, and we don't take an OS-level
+// flock, so this is the best we can do without native bindings. Acceptable
+// for cxs's low-concurrency sync flow; revisit if we ever observe corruption.
+// Exported for unit tests.
 export function tryRemoveStaleLock(lockPath: string, expected: SyncLockInfo): boolean {
   const reChecked = readLockInfo(lockPath);
   if (!reChecked) return true;

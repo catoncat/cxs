@@ -129,9 +129,13 @@ try {
 
 `getCurrentSessions()` 已经采用这种结构，其他函数应对齐。
 
-### P0-3：sync lock stale 清理存在竞争窗口
+### P0-3：sync lock stale 清理存在竞争窗口 ⚠️ best-effort mitigation
 
-当前逻辑遇到已有 lock 后会读 lock info，判断 pid 不存在就删除 lock 文件。这里有一个竞态：读到 stale lock 之后、删除之前，另一个进程可能已经创建了新 lock；当前进程可能误删别人的新 lock。
+> 状态：已在 commit `187c5d9` 部分缓解 — 引入 `tryRemoveStaleLock` 在删除前二次比对 `pid + createdAt`。但这是 best-effort,**不是原子 TOCTOU 修复**：在二次读取与 path-based `rmSync` 之间仍有残余 race 窗口,另一个进程可能在该窗口内删除并替换 lock,导致当前进程仍可能 `rmSync` 别人的新 lock。Node/Bun 无 inode-pinned unlink,要做真正原子需引入 OS-level flock(native bindings)。
+>
+> 工程决策：cxs 的 sync 是低并发异常路径,残余 race 窗口极窄,接受 best-effort 表述并在 `sync-lock.ts:tryRemoveStaleLock` 注释里明确标注。如未来观察到锁损坏,再考虑引入 flock 或换 rename-based 抓取。
+
+原文（保留作为背景）：当前逻辑遇到已有 lock 后会读 lock info，判断 pid 不存在就删除 lock 文件。这里有一个竞态：读到 stale lock 之后、删除之前，另一个进程可能已经创建了新 lock；当前进程可能误删别人的新 lock。
 
 建议删除前重新读取并比对 `pid + createdAt`，只删除自己刚判断过的那份 lock。
 
