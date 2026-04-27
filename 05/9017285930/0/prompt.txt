@@ -1,0 +1,18 @@
+开一个 team 来推进实现的工作
+
+---
+
+Findings
+
+  - Important: current --json 的 schema drift 处理仍不完整。query.ts:123 只检查 threads 表存在，但
+    query.ts:128 立刻查询 rollout_path/title/cwd/updated_at_ms。如果表存在但列变了，异常不是
+    CurrentStateDbError，CLI 也不会走 cli.ts:55 的结构化 error 分支。我用缺 rollout_path 的临时 state DB 复现
+    了：current --json 直接输出 SQLiteError: no such column: rollout_path 堆栈。建议补 PRAGMA
+    table_info(threads) 的 required columns 检查，并加 missing-column CLI 测试。
+  - Important: stale lock 修复仍不是原子 TOCTOU 修复。sync-lock.ts:75 在重新读取并比对后仍然调用 path-based
+    rmSync；在二次读取和删除之间，另一个进程仍可能删除旧 stale lock 并创建新 lock，这个进程随后会删掉新
+    lock。现在测试只覆盖“新 lock 已经在二次读取前出现”的情况。建议要么把表述改成 best-effort mitigation，要么
+    引入真正的互斥清理机制/OS lock，别把 P0-3 标为已彻底修复。
+  - Minor: 新 ranking 文档不适合进公开 repo 原样保留。docs/RANKING_WEIGHTS.md:3 用了本机绝对路径链接，多处
+    GitHub 不可用；docs/RANKING_WEIGHTS.md:213 还写了不存在的 read-range <uuid> --start 0。建议改相对路径，并
+    把命令改成当前 CLI 真实的 --seq / read-page 语义。
