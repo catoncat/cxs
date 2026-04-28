@@ -162,6 +162,39 @@ describe("cxs cli", () => {
     expect(result.stdout).not.toContain("next: cxs window");
   });
 
+  test("find emits friendly guidance when index is missing", async () => {
+    const base = mkdtempSync(join(tmpdir(), "cxs-cli-missing-index-"));
+    tempDirs.push(base);
+    const dbPath = join(base, "index.sqlite");
+
+    const result = await runCli(["find", "hi", "--db", dbPath]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(`index not found: ${dbPath}`);
+    expect(result.stderr).toContain("cxs sync");
+    expect(result.stderr).toContain("No separate init command is needed");
+    expect(result.stderr).not.toContain("Error:");
+    expect(result.stderr).not.toContain("at openReadDb");
+  });
+
+  test("stats --json emits structured guidance when index is missing", async () => {
+    const base = mkdtempSync(join(tmpdir(), "cxs-cli-missing-index-json-"));
+    tempDirs.push(base);
+    const dbPath = join(base, "index.sqlite");
+
+    const result = await runCli(["stats", "--json", "--db", dbPath]);
+
+    expect(result.exitCode).toBe(1);
+    const payload = JSON.parse(result.stdout) as {
+      error: { code: string; message: string; dbPath: string; hint: string };
+    };
+    expect(payload.error.code).toBe("index_unavailable");
+    expect(payload.error.message).toContain(dbPath);
+    expect(payload.error.dbPath).toBe(dbPath);
+    expect(payload.error.hint).toContain("cxs sync");
+    expect(result.stderr).toBe("");
+  });
+
   test("list filters by cwd substring and respects sort", async () => {
     const base = mkdtempSync(join(tmpdir(), "cxs-cli-list-"));
     tempDirs.push(base);
