@@ -45,16 +45,18 @@
 - `docs/` 里的文档要服务后续 agent 直接接手，而不是保留调研过程痕迹
 - 任何涉及“当前已实现什么”的文档，都必须先对齐代码和测试
 
-## 项目共享 Skill
+## Skill Package 边界
 
-仓库内维护项目共享 skill：
+本仓库不维护项目级 `.agents/skills`。cxs 的 skill 是给用户安装后操作 CLI 的发行物，不是维护本仓库时给 Codex agent 自动加载的项目 workflow。
 
-- `.agents/skills/cxs`
+skill package 源码放在：
+
+- `skill-packages/cxs`
 
 对外推荐安装方式：
 
 ```bash
-npx skills add catoncat/cxs --skill cxs -g -a codex -y
+npx skills add catoncat/cxs --full-depth --skill cxs -g -a codex -y
 ```
 
 注意这个 skill 不会自动安装 `cxs` CLI 本体。默认约定：

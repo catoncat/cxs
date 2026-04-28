@@ -235,22 +235,22 @@ npm run eval:compare -- data/cxs-eval/<before-batch> data/cxs-eval/<after-batch>
 - 协作说明见 [CONTRIBUTING.md](CONTRIBUTING.md)
 - 当前公开目标是“可接手、可验证、可继续演进”的源码仓库；发布流程以 npm 包为唯一分发面
 
-## 配套 Skill
+## 可安装 Skill Package
 
-仓库内自带一个项目共享 skill：
+仓库内保留一个发行用 skill package，刻意不放在 `.agents/skills` 下，避免 clone 本仓库后被当前项目的 agent runtime 当成本项目 workflow 自动加载：
 
-- `.agents/skills/cxs`
+- `skill-packages/cxs`
 
 推荐用 `npx skills add` 安装，而不是手动复制：
 
 ```bash
-npx skills add catoncat/cxs --skill cxs -g -a codex -y
+npx skills add catoncat/cxs --full-depth --skill cxs -g -a codex -y
 ```
 
 如果只想先看仓库里有哪些 skill：
 
 ```bash
-npx skills add catoncat/cxs --list
+npx skills add catoncat/cxs --full-depth --list
 ```
 
 CLI install guide:
