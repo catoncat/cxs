@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.5.5",
+  "checkpoint_id": "14bad1bd5f6a",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "docs/CODE_QUALITY_REVIEW_2026-04-27.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/14/bad1bd5f6a/0/metadata.json",
+      "transcript": "/14/bad1bd5f6a/0/full.jsonl",
+      "content_hash": "/14/bad1bd5f6a/0/content_hash.txt",
+      "prompt": "/14/bad1bd5f6a/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 537,
+    "cache_creation_tokens": 6074835,
+    "cache_read_tokens": 108292458,
+    "output_tokens": 329787,
+    "api_call_count": 322
+  }
+}
