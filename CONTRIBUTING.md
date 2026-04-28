@@ -16,7 +16,7 @@ bun install
 运行测试：
 
 ```bash
-bun test
+bun run check
 ```
 
 跑手工评测导出：
@@ -43,7 +43,7 @@ bun run ./eval/compare-eval-batches.ts data/cxs-eval/<before-batch> data/cxs-eva
 至少运行：
 
 ```bash
-bun test
+bun run check
 ```
 
 如果改动涉及查询、排序、评测语义，建议补一次：

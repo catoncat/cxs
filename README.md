@@ -215,7 +215,7 @@ bun install
 运行测试：
 
 ```bash
-bun test
+bun run check
 ```
 
 跑手工评测：

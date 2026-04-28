@@ -23,15 +23,14 @@
 验证命令：
 
 ```bash
-bun test
+bun run check
 ```
 
 结果：
 
 ```text
-30 pass
+48 pass
 0 fail
-109 expect() calls
 ```
 
 ## 优点
@@ -87,7 +86,7 @@ sync -> find -> read-range/read-page
 
 ### P0-1：缺少真正的 TypeScript 类型检查 ✅ 已修复
 
-> 状态：已在 commit `be75d87 chore: add TypeScript check` 修复（写本报告之后）。`tsconfig.json` 已就绪、`check` 已改为 `tsc --noEmit && bun test`。
+> 状态：已在 commit `be75d87 chore: add TypeScript check` 修复（写本报告之后）。`tsconfig.json` 已就绪、`check` 后续已对齐为 `tsc --noEmit && vitest run`。
 
 原文（保留作为背景）：`package.json` 中 `check` 当前只是 `bun test`，没有 `tsc --noEmit`。Bun 可以执行 TypeScript，但不等于有完整类型检查。
 
@@ -101,7 +100,7 @@ sync -> find -> read-range/read-page
 
 - `tsconfig.json`
 - `bunx tsc --noEmit`
-- 把 `check` 改成 `tsc --noEmit && bun test`
+- 把 `check` 改成 `tsc --noEmit && vitest run`
 
 ### P0-2：DB 连接在异常路径上可能泄漏
 
