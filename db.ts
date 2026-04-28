@@ -15,9 +15,16 @@ type SqlParams = unknown[];
 
 const BUSY_TIMEOUT_MS = 5000;
 
+export class IndexUnavailableError extends Error {
+  constructor(public readonly dbPath: string) {
+    super(`index not found: ${dbPath}`);
+    this.name = "IndexUnavailableError";
+  }
+}
+
 export function openReadDb(dbPath: string): Db {
   if (!existsSync(dbPath)) {
-    throw new Error(`index not found: ${dbPath}; run cxs sync first`);
+    throw new IndexUnavailableError(dbPath);
   }
 
   const db = new Database(dbPath, { readonly: true });

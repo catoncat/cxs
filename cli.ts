@@ -9,6 +9,7 @@ import {
   migrateLegacyCacheDirIfNeeded,
   resolveCodexDir,
 } from "./env";
+import { IndexUnavailableError } from "./db";
 
 // One-shot migration from legacy ~/.cache/cxs/ to ~/.local/state/cxs/. Runs
 // before any subcommand so `cxs stats` etc. see the migrated db, not just
@@ -121,13 +122,15 @@ program
   .option("--db <path>", "覆盖默认数据库路径", DEFAULT_DB_PATH)
   .option("--json", "输出 JSON")
   .action((query, options) => {
-    const limit = parsePositiveInt(options.limit, 10);
-    const result = findSessions(options.db, query, limit);
-    if (options.json) {
-      console.log(JSON.stringify(result, null, 2));
-      return;
-    }
-    printFindResults(result.query, result.results);
+    runReadCommand(Boolean(options.json), () => {
+      const limit = parsePositiveInt(options.limit, 10);
+      const result = findSessions(options.db, query, limit);
+      if (options.json) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      printFindResults(result.query, result.results);
+    });
   });
 
 program
@@ -140,23 +143,25 @@ program
   .option("--db <path>", "覆盖默认数据库路径", DEFAULT_DB_PATH)
   .option("--json", "输出 JSON")
   .action((sessionUuid, options) => {
-    const result = getMessageRange(options.db, sessionUuid, {
-      seq: optionalInt(options.seq),
-      query: options.query,
-      before: parsePositiveInt(options.before, 2),
-      after: parsePositiveInt(options.after, 2),
+    runReadCommand(Boolean(options.json), () => {
+      const result = getMessageRange(options.db, sessionUuid, {
+        seq: optionalInt(options.seq),
+        query: options.query,
+        before: parsePositiveInt(options.before, 2),
+        after: parsePositiveInt(options.after, 2),
+      });
+      if (options.json) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      printReadRangeResult(
+        result.session,
+        result.anchorSeq,
+        result.messages,
+        result.rangeStartSeq,
+        result.rangeEndSeq,
+      );
     });
-    if (options.json) {
-      console.log(JSON.stringify(result, null, 2));
-      return;
-    }
-    printReadRangeResult(
-      result.session,
-      result.anchorSeq,
-      result.messages,
-      result.rangeStartSeq,
-      result.rangeEndSeq,
-    );
   });
 
 program
@@ -167,24 +172,26 @@ program
   .option("--db <path>", "覆盖默认数据库路径", DEFAULT_DB_PATH)
   .option("--json", "输出 JSON")
   .action((sessionUuid, options) => {
-    const result = getMessagePage(
-      options.db,
-      sessionUuid,
-      parseNonNegativeInt(options.offset, 0),
-      parsePositiveInt(options.limit, 20),
-    );
-    if (options.json) {
-      console.log(JSON.stringify(result, null, 2));
-      return;
-    }
-    printReadPage(
-      result.session,
-      result.offset,
-      result.limit,
-      result.totalCount,
-      result.hasMore,
-      result.messages,
-    );
+    runReadCommand(Boolean(options.json), () => {
+      const result = getMessagePage(
+        options.db,
+        sessionUuid,
+        parseNonNegativeInt(options.offset, 0),
+        parsePositiveInt(options.limit, 20),
+      );
+      if (options.json) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      printReadPage(
+        result.session,
+        result.offset,
+        result.limit,
+        result.totalCount,
+        result.hasMore,
+        result.messages,
+      );
+    });
   });
 
 program
@@ -197,18 +204,20 @@ program
   .option("--db <path>", "覆盖默认数据库路径", DEFAULT_DB_PATH)
   .option("--json", "输出 JSON")
   .action((options) => {
-    const sort = normalizeListSort(options.sort);
-    const result = listSessionSummaries(options.db, {
-      cwd: options.cwd,
-      since: options.since,
-      sort,
-      limit: parsePositiveInt(options.limit, 20),
+    runReadCommand(Boolean(options.json), () => {
+      const sort = normalizeListSort(options.sort);
+      const result = listSessionSummaries(options.db, {
+        cwd: options.cwd,
+        since: options.since,
+        sort,
+        limit: parsePositiveInt(options.limit, 20),
+      });
+      if (options.json) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      printSessionList(result.results);
     });
-    if (options.json) {
-      console.log(JSON.stringify(result, null, 2));
-      return;
-    }
-    printSessionList(result.results);
   });
 
 program
@@ -217,12 +226,14 @@ program
   .option("--db <path>", "覆盖默认数据库路径", DEFAULT_DB_PATH)
   .option("--json", "输出 JSON")
   .action((options) => {
-    const summary = collectStats(options.db);
-    if (options.json) {
-      console.log(JSON.stringify(summary, null, 2));
-      return;
-    }
-    printStats(summary);
+    runReadCommand(Boolean(options.json), () => {
+      const summary = collectStats(options.db);
+      if (options.json) {
+        console.log(JSON.stringify(summary, null, 2));
+        return;
+      }
+      printStats(summary);
+    });
   });
 
 program.parse();
@@ -245,6 +256,42 @@ function optionalInt(value: string | undefined): number | undefined {
 function normalizeListSort(value: string | undefined): SessionListSort {
   if (value === "started" || value === "messages") return value;
   return "ended";
+}
+
+function runReadCommand(jsonMode: boolean, action: () => void): void {
+  try {
+    action();
+  } catch (error) {
+    if (error instanceof IndexUnavailableError) {
+      emitIndexUnavailableError(error, jsonMode);
+      return;
+    }
+    throw error;
+  }
+}
+
+function emitIndexUnavailableError(error: IndexUnavailableError, jsonMode: boolean): void {
+  const hint =
+    "Run `cxs sync` first to create the index. No separate init command is needed; sync initializes and updates it.";
+  if (jsonMode) {
+    console.log(
+      JSON.stringify(
+        {
+          error: {
+            code: "index_unavailable",
+            message: error.message,
+            dbPath: error.dbPath,
+            hint,
+          },
+        },
+        null,
+        2,
+      ),
+    );
+  } else {
+    console.error(`${error.message}\n${hint}`);
+  }
+  process.exitCode = 1;
 }
 
 function emitCurrentError(error: CurrentStateDbError, jsonMode: boolean): void {
