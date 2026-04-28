@@ -1,0 +1,11 @@
+--- parser.ts
++++ parser.ts
+@@ -109,7 +109,7 @@
+       model,
+-      startedAt: startedAt ?? new Date().toISOString(),
+-      endedAt: endedAt ?? new Date().toISOString(),
++      startedAt: startedAt,
++      endedAt: endedAt,
+       messages: eventMessages,
+     },
+   };

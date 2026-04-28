@@ -88,7 +88,14 @@ export async function parseCodexSession(filePath: string): Promise<ParseSessionR
   if (!sessionUuid || eventMessages.length === 0) return { kind: "skipped" };
 
   const title = loadCodexTitle(sessionUuid) ?? firstUserMessage(eventMessages) ?? "(no title)";
-  const timestamps = eventMessages.map((message) => message.timestamp).sort();
+
+  let startedAt = eventMessages[0]?.timestamp;
+  let endedAt = eventMessages[0]?.timestamp;
+  for (let i = 1; i < eventMessages.length; i++) {
+    const t = eventMessages[i]!.timestamp;
+    if (t < startedAt!) startedAt = t;
+    if (t > endedAt!) endedAt = t;
+  }
 
   return {
     kind: "parsed",
@@ -101,8 +108,8 @@ export async function parseCodexSession(filePath: string): Promise<ParseSessionR
       reasoningSummaryText: buildReasoningSummaryText(reasoningSummaries),
       cwd,
       model,
-      startedAt: timestamps[0] ?? new Date().toISOString(),
-      endedAt: timestamps[timestamps.length - 1] ?? new Date().toISOString(),
+      startedAt: startedAt ?? new Date().toISOString(),
+      endedAt: endedAt ?? new Date().toISOString(),
       messages: eventMessages,
     },
   };
@@ -123,8 +130,15 @@ function firstUserMessage(messages: ParsedMessage[]): string | null {
 function buildSessionSummary(messages: ParsedMessage[]): string {
   const firstUser = messages.find((message) => message.role === "user");
   const firstAssistant = messages.find((message) => message.role === "assistant");
-  const latestUser = [...messages].reverse().find((message) => message.role === "user");
-  const latestAssistant = [...messages].reverse().find((message) => message.role === "assistant");
+  let latestUser: ParsedMessage | undefined;
+  let latestAssistant: ParsedMessage | undefined;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]!;
+    const role = m.role;
+    if (!latestUser && role === "user") latestUser = m;
+    if (!latestAssistant && role === "assistant") latestAssistant = m;
+    if (latestUser && latestAssistant) break;
+  }
 
   const parts = [
     firstUser ? `user: ${normalizeSummaryText(firstUser.contentText)}` : "",
