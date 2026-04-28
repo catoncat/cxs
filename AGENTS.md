@@ -66,8 +66,8 @@ npx skills add catoncat/cxs --skill cxs -g -a codex -y
 
 涉及实现或文档真相变更时，至少做与改动直接相关的验证：
 
-- `bun test`
-- 必要时补一条 CLI 烟测，例如 `./bin/cxs stats --json` 或 `./bin/cxs find "<query>" --json`
+- `npm run check`
+- 必要时补一条 CLI 烟测，例如 `npm run cxs -- stats --json` 或 `npm run cxs -- find "<query>" --json`
 
 没有验证证据，不要声称“已对齐”“已完成”“文档正确”。
 

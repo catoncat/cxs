@@ -26,8 +26,8 @@
   - `read-range` 是否给出有用上下文
   - 是否命中关键 message / key phrase
 - 继续复用现有：
-  - `bun run eval:manual`
-  - `bun run ./eval/compare-eval-batches.ts <before> <after>`
+  - `npm run eval:manual`
+  - `npm run eval:compare -- <before> <after>`
 
 ### P1: 已补 session-level 字段召回
 

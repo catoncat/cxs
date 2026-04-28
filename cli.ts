@@ -1,5 +1,3 @@
-#!/usr/bin/env bun
-
 import { existsSync } from "node:fs";
 import { Command } from "commander";
 import packageJson from "./package.json" with { type: "json" };

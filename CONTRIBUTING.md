@@ -2,13 +2,13 @@
 
 ## 开发环境
 
-- Bun `>= 1.3`
+- Node.js `>= 22`
 - macOS 或其他能读取本机 Codex session 数据的环境
 
 安装依赖：
 
 ```bash
-bun install
+npm install
 ```
 
 ## 常用命令
@@ -16,19 +16,19 @@ bun install
 运行测试：
 
 ```bash
-bun run check
+npm run check
 ```
 
 跑手工评测导出：
 
 ```bash
-bun run eval:manual
+npm run eval:manual
 ```
 
 对比两次评测批次：
 
 ```bash
-bun run ./eval/compare-eval-batches.ts data/cxs-eval/<before-batch> data/cxs-eval/<after-batch>
+npm run eval:compare -- data/cxs-eval/<before-batch> data/cxs-eval/<after-batch>
 ```
 
 ## 贡献边界
@@ -43,13 +43,13 @@ bun run ./eval/compare-eval-batches.ts data/cxs-eval/<before-batch> data/cxs-eva
 至少运行：
 
 ```bash
-bun run check
+npm run check
 ```
 
 如果改动涉及查询、排序、评测语义，建议补一次：
 
 ```bash
-./bin/cxs stats --json
+cxs stats --json
 ```
 
 以及相关 CLI 烟测。

@@ -13,7 +13,7 @@ const distCli = resolve(here, "..", "dist", "cli.js");
 const SHEBANG = "#!/usr/bin/env node\n";
 const original = readFileSync(distCli, "utf8");
 
-// Source file may carry its own shebang (e.g. #!/usr/bin/env bun for dev).
+// Source file may carry its own shebang in development.
 // Always normalize to node for the published artifact.
 const stripped = original.startsWith("#!") ? original.slice(original.indexOf("\n") + 1) : original;
 writeFileSync(distCli, SHEBANG + stripped);

@@ -23,7 +23,7 @@
 验证命令：
 
 ```bash
-bun run check
+npm run check
 ```
 
 结果：
@@ -88,7 +88,7 @@ sync -> find -> read-range/read-page
 
 > 状态：已在 commit `be75d87 chore: add TypeScript check` 修复（写本报告之后）。`tsconfig.json` 已就绪、`check` 后续已对齐为 `tsc --noEmit && vitest run`。
 
-原文（保留作为背景）：`package.json` 中 `check` 当前只是 `bun test`，没有 `tsc --noEmit`。Bun 可以执行 TypeScript，但不等于有完整类型检查。
+原文（保留作为背景）：`package.json` 中 `check` 当时只是 runner 测试，没有 `tsc --noEmit`。执行 TypeScript 不等于有完整类型检查。
 
 当前类型已经开始变复杂，例如：
 
@@ -99,7 +99,7 @@ sync -> find -> read-range/read-page
 建议补：
 
 - `tsconfig.json`
-- `bunx tsc --noEmit`
+- `npx tsc --noEmit`
 - 把 `check` 改成 `tsc --noEmit && vitest run`
 
 ### P0-2：DB 连接在异常路径上可能泄漏
@@ -130,7 +130,7 @@ try {
 
 ### P0-3：sync lock stale 清理存在竞争窗口 ⚠️ best-effort mitigation
 
-> 状态：已在 commit `187c5d9` 部分缓解 — 引入 `tryRemoveStaleLock` 在删除前二次比对 `pid + createdAt`。但这是 best-effort,**不是原子 TOCTOU 修复**：在二次读取与 path-based `rmSync` 之间仍有残余 race 窗口,另一个进程可能在该窗口内删除并替换 lock,导致当前进程仍可能 `rmSync` 别人的新 lock。Node/Bun 无 inode-pinned unlink,要做真正原子需引入 OS-level flock(native bindings)。
+> 状态：已在 commit `187c5d9` 部分缓解 — 引入 `tryRemoveStaleLock` 在删除前二次比对 `pid + createdAt`。但这是 best-effort,**不是原子 TOCTOU 修复**：在二次读取与 path-based `rmSync` 之间仍有残余 race 窗口,另一个进程可能在该窗口内删除并替换 lock,导致当前进程仍可能 `rmSync` 别人的新 lock。Node 层没有 inode-pinned unlink,要做真正原子需引入 OS-level flock(native bindings)。
 >
 > 工程决策：cxs 的 sync 是低并发异常路径,残余 race 窗口极窄,接受 best-effort 表述并在 `sync-lock.ts:tryRemoveStaleLock` 注释里明确标注。如未来观察到锁损坏,再考虑引入 flock 或换 rename-based 抓取。
 

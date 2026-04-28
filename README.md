@@ -34,23 +34,19 @@
 
 > **平台支持**:**macOS / Linux only**(`darwin-arm64` / `darwin-x64` / `linux-x64` / `linux-arm64`)。Windows 走 WSL,我们没原生测过 Windows path。
 
-### 一行安装(推荐:零依赖)
-
-从 GitHub Release 拉对应平台的 standalone binary,自动放到 `~/.local/bin/cxs`,**不需要预装 Bun 或 Node**:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/catoncat/cxs/main/scripts/install.sh | bash
-```
-
-如果 `~/.local/bin` 不在 PATH,脚本会提示;或先 `export CXS_INSTALL_DIR=/usr/local/bin` 再跑。
-
-### npm 全局安装(需要 Node 22+)
+### npm 全局安装(推荐,需要 Node 22+)
 
 ```bash
 npm i -g @act0r/cxs
 ```
 
-装出来的命令是 `cxs`。约 13 MB,不含 runtime,启动快。CI / 容器场景以及已有 Node 工具链的用户首选。
+装出来的命令是 `cxs`。当前唯一发布形态是 Node.js npm 包,不再发布 standalone binary。
+
+也可以一次性用 npx:
+
+```bash
+npx @act0r/cxs --help
+```
 
 > 包名是 scoped 的,因为 npm 上 `cxs` 已被 css-in-js 库占用。
 
@@ -59,11 +55,11 @@ npm i -g @act0r/cxs
 ```bash
 git clone https://github.com/catoncat/cxs.git
 cd cxs
-bun install     # Bun 是主开发 runtime
-bun run cxs --version    # 通过 tsx 直接跑 cli.ts
+npm install
+npm run cxs -- --version    # 通过 tsx 直接跑 cli.ts
 ```
 
-完整工程命令:`bun run check`(tsc + vitest)、`npm run build`(esbuild bundle 出 `dist/cli.js`)、`npm run eval:perf`(真实大库基准)。
+完整工程命令:`npm run check`(tsc + vitest)、`npm run build`(esbuild bundle 出 `dist/cli.js`)、`npm run eval:perf`(真实大库基准)。
 
 ### 首次使用建立索引
 
@@ -94,7 +90,7 @@ export CXS_DATA_DIR="$HOME/.config/cxs"
 ### 要求
 
 - 本机可读 `~/.codex/sessions`
-- 三种安装路径:standalone binary 无运行时依赖;`npm i -g` 需 Node `>= 22`;源码开发需 Bun `>= 1.3`
+- Node.js `>= 22`
 
 ## 用法
 
@@ -107,7 +103,7 @@ export CXS_DATA_DIR="$HOME/.config/cxs"
 先建立索引：
 
 ```bash
-./bin/cxs sync
+cxs sync
 ```
 
 `sync` 默认是严格模式：任一文件解析或写库失败都会带着 per-file 诊断非零退出，并且不会提交半截索引。只有显式传 `--best-effort` 时，才会继续写入成功部分。
@@ -115,7 +111,7 @@ export CXS_DATA_DIR="$HOME/.config/cxs"
 搜索会话：
 
 ```bash
-./bin/cxs find "health check"
+cxs find "health check"
 ```
 
 `find` 会返回标题、派生的 session summary，以及当前锚点 snippet，方便先做轻量筛选再决定是否 `read-range`。如果命中只来自 session-level title/summary/compact/reasoning summary，结果会标为 `matchSource = "session"`，这时先用 `read-page` 浏览整场会话。
@@ -123,44 +119,45 @@ export CXS_DATA_DIR="$HOME/.config/cxs"
 围绕命中点读取局部上下文：
 
 ```bash
-./bin/cxs read-range <sessionUuid> --seq 12
-./bin/cxs read-range <sessionUuid> --query "health check"
+cxs read-range <sessionUuid> --seq 12
+cxs read-range <sessionUuid> --query "health check"
 ```
 
 分页读取整场会话：
 
 ```bash
-./bin/cxs read-page <sessionUuid> --offset 0 --limit 20
+cxs read-page <sessionUuid> --offset 0 --limit 20
 ```
 
 列出已索引 session（不做全文检索）：
 
 ```bash
-./bin/cxs list --limit 20
-./bin/cxs list --cwd hammerspoon --since 2026-04-01 --sort ended
+cxs list --limit 20
+cxs list --cwd hammerspoon --since 2026-04-01 --sort ended
 ```
 
 索引状态：
 
 ```bash
-./bin/cxs stats
+cxs stats
 ```
 
 ## 快速开始
 
+下面以已安装的 `cxs` 命令为例；源码 checkout 中可把 `cxs` 替换成 `npm run cxs --`。
+
 首次使用建议按下面顺序：
 
 ```bash
-bun install
-./bin/cxs sync
-./bin/cxs find "health check"
-./bin/cxs read-range <sessionUuid> --seq <matchSeq>
+cxs sync
+cxs find "health check"
+cxs read-range <sessionUuid> --seq <matchSeq>
 ```
 
 如果你已经知道当前项目路径，也可以先缩范围：
 
 ```bash
-./bin/cxs list --cwd /Users/you/work/project --sort ended -n 10
+cxs list --cwd /Users/you/work/project --sort ended -n 10
 ```
 
 ## 当前实现边界
@@ -193,13 +190,13 @@ bun install
 先看索引时间：
 
 ```bash
-./bin/cxs stats --json
+cxs stats --json
 ```
 
 如果 `lastSyncAt` 很旧，先重新同步：
 
 ```bash
-./bin/cxs sync
+cxs sync
 ```
 
 ### 为什么有些中文短 query 命中不稳定？
@@ -215,13 +212,13 @@ bun install
 运行测试：
 
 ```bash
-bun run check
+npm run check
 ```
 
 跑手工评测：
 
 ```bash
-bun run eval:manual
+npm run eval:manual
 ```
 
 `eval:manual` 的 pass 判定现在采用 “Top-K 窗口内所有已配置 predicate 都必须命中” 的语义，并会把 predicate 级别结果写进导出 README/scorecard，避免单个弱命中把整条 query 误记为通过。
@@ -229,14 +226,14 @@ bun run eval:manual
 对比两次评测批次的 Top1 变化：
 
 ```bash
-bun run ./eval/compare-eval-batches.ts data/cxs-eval/<before-batch> data/cxs-eval/<after-batch>
+npm run eval:compare -- data/cxs-eval/<before-batch> data/cxs-eval/<after-batch>
 ```
 
 ## 开源协作
 
 - 项目规则见 [AGENTS.md](AGENTS.md)
 - 协作说明见 [CONTRIBUTING.md](CONTRIBUTING.md)
-- 当前公开目标是“可接手、可验证、可继续演进”的源码仓库，不承诺 npm 发布流程稳定
+- 当前公开目标是“可接手、可验证、可继续演进”的源码仓库；发布流程以 npm 包为唯一分发面
 
 ## 配套 Skill
 

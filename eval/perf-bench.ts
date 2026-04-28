@@ -63,7 +63,7 @@ function parseArgs(argv: string[]): CliArgs {
     } else if (a === "--json-only") {
       jsonOnly = true;
     } else if (a === "--help" || a === "-h") {
-      console.log("Usage: bun run eval:perf [--root <dir>] [--db <path>] [--json-only]");
+      console.log("Usage: npm run eval:perf -- [--root <dir>] [--db <path>] [--json-only]");
       process.exit(0);
     }
   }
