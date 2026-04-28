@@ -12,6 +12,14 @@
 export CXS_BIN=/absolute/path/to/bin/cxs
 ```
 
+没有单独的 `init` 命令。首次安装后先跑 `sync`;如果是一次性 npx 调用,先跑 `npx @act0r/cxs sync`。
+
+缺少 cxs 索引时,`find` / `read-range` / `read-page` / `list` / `stats --json` 返回:
+
+```json
+{ "error": { "code": "index_unavailable", "message": "...", "dbPath": "...", "hint": "..." } }
+```
+
 ## current
 
 Purpose: 直读 Codex state SQLite,按 cwd 拿候选 session,**不依赖 cxs 自己的索引**(适合 sync 没跑过或刚换机器的场景)。

@@ -59,7 +59,7 @@ npx skills add catoncat/cxs --skill cxs -g -a codex -y
 ## 前置
 
 - 先 `stats --json` 看 `dbPath / lastSyncAt / sessionCount`
-- 索引不存在或 `lastSyncAt` 很旧 → `sync`(默认严格模式;只有用户接受部分成功才加 `--best-effort`)
+- 索引不存在、读命令返回 `index_unavailable`、或 `lastSyncAt` 很旧 → `sync`(默认严格模式;只有用户接受部分成功才加 `--best-effort`)
 - `current` 不依赖 cxs 索引,即使 sync 没跑过也能用
 - 从别的 cwd 调用时,若默认 db 不对,显式传 `--db`
 

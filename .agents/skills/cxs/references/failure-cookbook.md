@@ -6,6 +6,7 @@
 | --- | --- | --- |
 | `find` 零结果但用户坚持存在 | `stats --json` | 看 `lastSyncAt`；必要时 `sync`；再试 `list --cwd` |
 | `sync` 非零退出带 per-file errors | `sync --json 2>&1` | 看 `errorDetails[]`；默认严格模式；只在允许部分成功时加 `--best-effort` |
+| `find/list/stats/read-*` 输出 `index_unavailable` | `sync` | cxs 索引还没建立；没有单独 `init`，`sync` 就是建库入口 |
 | `stats/list/find` 报 `database is locked` | 原命令重试一次 | 多半是 SQLite 忙；仍失败就先跳过 `stats` 直接读 |
 | 同一主题多条 uuid | `find -n 10 --json` | 按 `startedAt`、`cwd`、`matchCount` 选 |
 | 中文/CJK 零结果 | 无 | 换至少两字中文、英文关键词，或先 `list --since` |
@@ -36,6 +37,29 @@
 
 - 默认不要忽略，先看是坏 JSONL、权限问题还是别的解析失败
 - 只有用户明确接受 partial index 时，才用 `--best-effort`
+
+## index_unavailable
+
+`find` / `read-range` / `read-page` / `list` / `stats` 都读 cxs 自己的 SQLite 索引。第一次安装后还没跑过 `sync` 时,这些命令会在 `--json` 模式下返回:
+
+```json
+{
+  "error": {
+    "code": "index_unavailable",
+    "message": "index not found: ...",
+    "dbPath": "...",
+    "hint": "Run `cxs sync` first ..."
+  }
+}
+```
+
+处理方式:
+
+```bash
+"${CXS_BIN:-cxs}" sync
+```
+
+没有单独 `init` 命令;`sync` 会创建并更新索引。如果用户是一次性 `npx @act0r/cxs find ...`,提示他先跑 `npx @act0r/cxs sync`。
 
 ## Database is locked or SQLITE_BUSY
 
@@ -85,9 +109,10 @@
 | `sync`(per-file 错) | stderr | `SyncSummary`,看 `errors / errorDetails[]` |
 | `sync`(锁超时 `SyncLockTimeoutError`) | stderr | `{ "error": <message string> }` |
 | `current`(state DB 问题) | stdout | `{ "error": { "code": "state_db_unavailable", "message": "..." } }` |
-| `find / read-range / read-page / list / stats` 异常 | 进程异常退出 | 当前未结构化,直接非零退出 |
+| `find / read-range / read-page / list / stats`(索引不存在) | stdout | `{ "error": { "code": "index_unavailable", "message": "...", "dbPath": "...", "hint": "..." } }` |
+| `find / read-range / read-page / list / stats`(其他异常) | 进程异常退出 | 直接非零退出 |
 
-**实务**:解析前先看 exit code;非零再判断是结构化(`current`)还是字符串(`sync` 锁超时)还是 summary(`sync` per-file)。
+**实务**:解析前先看 exit code;非零再判断是结构化(`current` / 缺索引读命令)还是字符串(`sync` 锁超时)还是 summary(`sync` per-file)。
 
 ## Schema drift
 

@@ -72,6 +72,13 @@ cxs sync
 cxs stats --json
 ```
 
+没有单独的 `init` 命令；`sync` 会创建并更新索引。若直接用 `npx` 试跑:
+
+```bash
+npx @act0r/cxs sync
+npx @act0r/cxs find "health check"
+```
+
 `--help` 应列出 `sync` / `find` / `read-range` / `read-page` / `list` / `stats` / `current`。
 
 ### 数据目录
