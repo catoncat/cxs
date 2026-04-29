@@ -78,4 +78,5 @@
 
 - 仓库内 `README.md`
 - 仓库内 `src/query.ts`
+- 仓库内 `src/query/read.ts`
 - 仓库内 `src/types.ts`

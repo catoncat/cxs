@@ -81,6 +81,7 @@ Codex resume/fork 可能产生多个 title 很像、但 `sessionUuid` 不同的 
 
 ## 来源
 
-- 仓库内 `src/query.ts`
+- 仓库内 `src/query/search.ts`
+- 仓库内 `src/query/snippet.ts`
 - 仓库内 `src/tokenize.ts`
 - 仓库内 `src/ranking.ts`

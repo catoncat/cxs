@@ -36,8 +36,8 @@
 - [cli.ts](/Users/envvar/work/repos/cxs/src/cli.ts): CLI 命令面
 - [indexer.ts](/Users/envvar/work/repos/cxs/src/indexer.ts): sync 与索引更新
 - [parser.ts](/Users/envvar/work/repos/cxs/src/parser.ts): Codex JSONL 解析与 `summary_text` 生成
-- [db.ts](/Users/envvar/work/repos/cxs/src/db.ts): SQLite schema、会话/消息存取
-- [query.ts](/Users/envvar/work/repos/cxs/src/query.ts): find / list / read-range / read-page 查询编排
+- [db.ts](/Users/envvar/work/repos/cxs/src/db.ts): SQLite facade；具体 schema / store / coverage 模块在 `src/db/`
+- [query.ts](/Users/envvar/work/repos/cxs/src/query.ts): 查询 facade；find / read / list / stats / search / snippet 模块在 `src/query/`
 - [status.ts](/Users/envvar/work/repos/cxs/src/status.ts): status 输出编排
 - [selector.ts](/Users/envvar/work/repos/cxs/src/selector.ts): selector 解析与覆盖蕴含规则
 - [source-inventory.ts](/Users/envvar/work/repos/cxs/src/source-inventory.ts): raw sessions metadata inventory

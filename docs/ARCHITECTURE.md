@@ -39,7 +39,7 @@ strict sync 在写 complete coverage 前会 reconcile selector 范围：当前 s
 
 ### 2. 持久化
 
-[db.ts](/Users/envvar/work/repos/cxs/src/db.ts) 维护两层主数据：
+[db.ts](/Users/envvar/work/repos/cxs/src/db.ts) 是 SQLite 访问 facade；`src/db/` 下的 schema / store / coverage 模块维护两层主数据：
 
 - `sessions`
 - `messages`
@@ -64,7 +64,7 @@ SQLite 访问层当前已经按 reader / writer 分流：
 
 ### 3. 查询
 
-[query.ts](/Users/envvar/work/repos/cxs/src/query.ts) 提供三类读取：
+[query.ts](/Users/envvar/work/repos/cxs/src/query.ts) 是查询 facade；`src/query/` 下的 find / read / list / stats / search 模块提供三类读取：
 
 - `findSessions()`
 - `getMessageRange()`

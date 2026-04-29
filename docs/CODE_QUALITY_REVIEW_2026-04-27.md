@@ -52,12 +52,12 @@ sync -> find -> read-range/read-page
 - `src/cli.ts`：CLI 命令面
 - `src/indexer.ts`：sync 与索引更新
 - `src/parser.ts`：Codex JSONL 解析与 session summary 生成
-- `src/db.ts`：SQLite schema、session/message 存取、FTS 表维护
-- `src/query.ts`：find/list/read-range/read-page/current 查询编排
+- `src/db.ts` + `src/db/`：SQLite facade、schema、session/message/coverage/store 模块
+- `src/query.ts` + `src/query/`：查询 facade、find/list/read-range/read-page/stats/search/snippet 模块
 - `src/ranking.ts`：session 级 heuristic rerank
 - `eval/`：manual eval 与 batch compare
 
-这对一个本地 CLI 来说是健康结构。
+这对一个本地 CLI 来说是健康结构；后续已进一步把 db/query 大文件拆成 facade + 子模块。
 
 ### 3. 当前改动方向合理
 
