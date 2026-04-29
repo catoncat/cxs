@@ -7,3 +7,5 @@ data/
 .entire/
 .intent/
 research/
+.ml-cache/
+.mainline/local.toml
