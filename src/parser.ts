@@ -122,8 +122,16 @@ function firstUserMessage(messages: ParsedMessage[]): string | null {
 function buildSessionSummary(messages: ParsedMessage[]): string {
   const firstUser = messages.find((message) => message.role === "user");
   const firstAssistant = messages.find((message) => message.role === "assistant");
-  const latestUser = [...messages].reverse().find((message) => message.role === "user");
-  const latestAssistant = [...messages].reverse().find((message) => message.role === "assistant");
+
+  // OPTIMIZATION: Reverse loop avoids double array cloning/traversal overhead
+  let latestUser: ParsedMessage | undefined;
+  let latestAssistant: ParsedMessage | undefined;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (!latestUser && msg.role === "user") latestUser = msg;
+    if (!latestAssistant && msg.role === "assistant") latestAssistant = msg;
+    if (latestUser && latestAssistant) break;
+  }
 
   const parts = [
     firstUser ? `user: ${normalizeSummaryText(firstUser.contentText)}` : "",
