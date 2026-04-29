@@ -1,12 +1,16 @@
 import Database from "better-sqlite3";
 import { statSync } from "node:fs";
 import {
+  coverageEntriesForSession,
+  coverageStatusForSelector,
   getMessagesForPage,
   getMessagesForRange,
   getSessionRecord,
   getStatsCounts,
   getTopCwds,
+  listCoverageRecords,
   listSessions,
+  selectorWhereSql,
   withReadDb,
 } from "./db";
 import { INDEX_VERSION } from "./env";
@@ -14,8 +18,9 @@ import { classifyQueryProfile, rerankHits } from "./ranking";
 import type { RawHitRow } from "./ranking";
 import { hasCjk, isCjkToken, queryTerms } from "./tokenize";
 import type {
-  CurrentSessionCandidate,
+  CoverageStatus,
   FindResult,
+  Selector,
   SessionListEntry,
   SessionListQuery,
   SessionRecord,
@@ -26,33 +31,20 @@ export { classifyQueryProfile } from "./ranking";
 type Db = Database.Database;
 type SqlParams = unknown[];
 
-// Why: Codex state db lives outside cxs's control — its schema can drift
-// across upstream releases. CLI translates this into a structured --json
-// error instead of leaking SQLite's raw exception.
-export class CurrentStateDbError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "CurrentStateDbError";
-  }
-}
-
-// Hard-coded identifier list — getCurrentSessions's SELECT references each of
-// these. Keep this in sync with the SELECT below.
-const THREADS_REQUIRED_COLUMNS = ["id", "rollout_path", "cwd", "title", "updated_at_ms"] as const;
-
 export function findSessions(
   dbPath: string,
   query: string,
   limit: number,
-): { query: string; results: FindResult[] } {
+  selector: Selector | null = null,
+): { query: string; results: FindResult[]; coverage: CoverageStatus } {
   return withReadDb(dbPath, (db) => {
     const recallLimit = Math.max(limit * 12, 50);
     const rawRows = [
-      ...searchMessageHits(db, query, recallLimit),
-      ...searchSessionHits(db, query, recallLimit),
+      ...searchMessageHits(db, query, recallLimit, undefined, selector),
+      ...searchSessionHits(db, query, recallLimit, selector),
     ];
     const results = rerankHits(rawRows, query, limit);
-    return { query, results };
+    return { query, results, coverage: buildCoverageStatus(db, selector) };
   });
 }
 
@@ -66,6 +58,7 @@ export function getMessageRange(
   rangeStartSeq: number;
   rangeEndSeq: number;
   messages: ReturnType<typeof getMessagesForRange>;
+  coverage: { entries: ReturnType<typeof coverageEntriesForSession> };
 } {
   return withReadDb(dbPath, (db) => {
     const anchorSeq = resolveAnchorSeq(db, sessionUuid, options.seq, options.query);
@@ -75,7 +68,14 @@ export function getMessageRange(
     const rangeStartSeq = Math.max(0, anchorSeq - options.before);
     const rangeEndSeq = anchorSeq + options.after;
     const messages = getMessagesForRange(db, sessionUuid, rangeStartSeq, rangeEndSeq);
-    return { session, anchorSeq, rangeStartSeq, rangeEndSeq, messages };
+    return {
+      session,
+      anchorSeq,
+      rangeStartSeq,
+      rangeEndSeq,
+      messages,
+      coverage: { entries: coverageEntriesForSession(db, session) },
+    };
   });
 }
 
@@ -91,6 +91,7 @@ export function getMessagePage(
   totalCount: number;
   hasMore: boolean;
   messages: ReturnType<typeof getMessagesForPage>;
+  coverage: { entries: ReturnType<typeof coverageEntriesForSession> };
 } {
   return withReadDb(dbPath, (db) => {
     const session = getSessionRecord(db, sessionUuid);
@@ -98,67 +99,33 @@ export function getMessagePage(
     const messages = getMessagesForPage(db, sessionUuid, offset, limit);
     const totalCount = session.messageCount;
     const hasMore = offset + messages.length < totalCount;
-    return { session, offset, limit, totalCount, hasMore, messages };
+    return {
+      session,
+      offset,
+      limit,
+      totalCount,
+      hasMore,
+      messages,
+      coverage: { entries: coverageEntriesForSession(db, session) },
+    };
   });
 }
 
 export function listSessionSummaries(
   dbPath: string,
   query: SessionListQuery,
-): { query: SessionListQuery; results: SessionListEntry[] } {
+): { query: SessionListQuery; results: SessionListEntry[]; coverage: CoverageStatus } {
   return withReadDb(dbPath, (db) => {
     const results = listSessions(db, query);
-    return { query, results };
+    return { query, results, coverage: buildCoverageStatus(db, query.selector ?? null) };
   });
 }
 
-export function getCurrentSessions(
-  stateDbPath: string,
-  cwd: string,
-  limit: number,
-): { cwd: string; candidates: CurrentSessionCandidate[] } {
-  const normalizedCwd = cwd.trim();
-  if (!normalizedCwd) {
-    return { cwd: normalizedCwd, candidates: [] };
-  }
-
-  const db = new Database(stateDbPath, { readonly: true });
-  try {
-    if (!tableExists(db, "threads")) {
-      throw new CurrentStateDbError(
-        `unexpected codex state db schema: missing 'threads' table at ${stateDbPath}`,
-      );
-    }
-    const missingColumns = findMissingColumns(db, "threads", THREADS_REQUIRED_COLUMNS);
-    if (missingColumns.length > 0) {
-      throw new CurrentStateDbError(
-        `unexpected codex state db schema: 'threads' missing column(s) ${missingColumns.join(", ")} at ${stateDbPath}`,
-      );
-    }
-    const candidates = db
-      .prepare<[string, number], CurrentSessionCandidate>(`
-        SELECT
-          id AS sessionUuid,
-          title,
-          cwd,
-          rollout_path AS filePath,
-          COALESCE(updated_at_ms, 0) AS updatedAtMs
-        FROM threads
-        WHERE cwd = ?
-        ORDER BY updated_at_ms DESC
-        LIMIT ?
-      `)
-      .all(normalizedCwd, limit) as CurrentSessionCandidate[];
-    return { cwd: normalizedCwd, candidates };
-  } finally {
-    db.close();
-  }
-}
-
 export function collectStats(dbPath: string): StatsSummary {
-  const { counts, topCwds } = withReadDb(dbPath, (db) => ({
+  const { counts, topCwds, coverage } = withReadDb(dbPath, (db) => ({
     counts: getStatsCounts(db),
     topCwds: getTopCwds(db, 10),
+    coverage: listCoverageRecords(db),
   }));
 
   let dbSizeBytes = 0;
@@ -178,6 +145,7 @@ export function collectStats(dbPath: string): StatsSummary {
     dbPath,
     dbSizeBytes,
     lastSyncAt: counts.lastSyncAt,
+    coverage,
   };
 }
 
@@ -205,7 +173,13 @@ function searchTopHitInSession(db: Db, sessionUuid: string, query: string): Find
   return result ?? null;
 }
 
-function searchMessageHits(db: Db, query: string, limit: number, sessionUuid?: string): RawHitRow[] {
+function searchMessageHits(
+  db: Db,
+  query: string,
+  limit: number,
+  sessionUuid?: string,
+  selector: Selector | null = null,
+): RawHitRow[] {
   const normalized = query.trim();
   if (!normalized) return [];
 
@@ -215,21 +189,21 @@ function searchMessageHits(db: Db, query: string, limit: number, sessionUuid?: s
   // back to a bounded LIKE scan so single-character CJK probes still work
   // even though they are discouraged.
   if (terms.length === 0) {
-    if (hasCjk(normalized)) return searchByLike(db, normalized, limit, sessionUuid);
+    if (hasCjk(normalized)) return searchByLike(db, normalized, limit, sessionUuid, selector);
     return [];
   }
 
-  return searchByFts(db, terms, limit, sessionUuid);
+  return searchByFts(db, terms, limit, sessionUuid, selector);
 }
 
-function searchSessionHits(db: Db, query: string, limit: number): RawHitRow[] {
+function searchSessionHits(db: Db, query: string, limit: number, selector: Selector | null): RawHitRow[] {
   const normalized = query.trim();
   if (!normalized || !tableExists(db, "sessions_fts")) return [];
 
   const terms = queryTerms(normalized);
   if (terms.length === 0) return [];
 
-  return searchSessionsByFts(db, normalized, terms, limit);
+  return searchSessionsByFts(db, normalized, terms, limit, selector);
 }
 
 function searchByFts(
@@ -237,11 +211,17 @@ function searchByFts(
   terms: string[],
   limit: number,
   sessionUuid?: string,
+  selector: Selector | null = null,
 ): RawHitRow[] {
   const matchExpr = buildFtsMatch(terms);
   const conditions = [`messages_fts MATCH ?`];
   const params: SqlParams = [matchExpr];
 
+  if (selector) {
+    const selectorWhere = selectorWhereSql(selector, "s");
+    conditions.push(...selectorWhere.conditions);
+    params.push(...selectorWhere.params);
+  }
   if (sessionUuid) {
     conditions.push("m.session_uuid = ?");
     params.push(sessionUuid);
@@ -279,10 +259,19 @@ function searchSessionsByFts(
   query: string,
   terms: string[],
   limit: number,
+  selector: Selector | null,
 ): RawHitRow[] {
   const matchExpr = buildFtsMatch(terms);
+  const conditions = ["sessions_fts MATCH ?"];
+  const params: SqlParams = [matchExpr];
+  if (selector) {
+    const selectorWhere = selectorWhereSql(selector, "s");
+    conditions.push(...selectorWhere.conditions);
+    params.push(...selectorWhere.params);
+  }
+  params.push(limit);
   const rows = db
-    .prepare<[string, number], RawHitRow>(`
+    .prepare<typeof params, RawHitRow>(`
       SELECT
         s.session_uuid AS sessionUuid,
         s.title AS title,
@@ -299,11 +288,11 @@ function searchSessionsByFts(
         bm25(sessions_fts, 8.0, 3.0, 4.0, 1.2) AS score
       FROM sessions_fts
       JOIN sessions s ON s.id = sessions_fts.rowid
-      WHERE sessions_fts MATCH ?
+      WHERE ${conditions.join(" AND ")}
       ORDER BY score
       LIMIT ?
     `)
-    .all(matchExpr, limit) as RawHitRow[];
+    .all(...params) as RawHitRow[];
 
   return rows.map((row) => ({
     ...row,
@@ -311,9 +300,20 @@ function searchSessionsByFts(
   }));
 }
 
-function searchByLike(db: Db, query: string, limit: number, sessionUuid?: string): RawHitRow[] {
+function searchByLike(
+  db: Db,
+  query: string,
+  limit: number,
+  sessionUuid?: string,
+  selector: Selector | null = null,
+): RawHitRow[] {
   const conditions = ["lower(m.content_text) LIKE ? ESCAPE '\\'"];
   const params: SqlParams = [`%${escapeLike(query.toLowerCase())}%`];
+  if (selector) {
+    const selectorWhere = selectorWhereSql(selector, "s");
+    conditions.push(...selectorWhere.conditions);
+    params.push(...selectorWhere.params);
+  }
   if (sessionUuid) {
     conditions.push("m.session_uuid = ?");
     params.push(sessionUuid);
@@ -359,17 +359,6 @@ function tableExists(db: Db, tableName: string): boolean {
   return Boolean(row);
 }
 
-// Why: PRAGMA table_info doesn't accept bound parameters, so callers MUST
-// pass a hard-coded identifier. Returns required columns that the table is
-// missing, in input order; empty array means schema is good.
-function findMissingColumns(db: Db, tableName: string, required: readonly string[]): string[] {
-  const rows = db
-    .prepare<[], { name: string }>(`PRAGMA table_info(${tableName})`)
-    .all() as Array<{ name: string }>;
-  const present = new Set(rows.map((row) => row.name));
-  return required.filter((column) => !present.has(column));
-}
-
 /**
  * Build an FTS5 MATCH expression from already-tokenized terms. Each term is
  * quoted and ANDed, giving us intersection semantics across CJK bigrams and
@@ -391,6 +380,16 @@ function quoteFtsTerm(term: string): string {
 // empty-token queries fall through to this branch now.
 function escapeLike(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
+}
+
+function buildCoverageStatus(db: Db, selector: Selector | null): CoverageStatus {
+  const status = coverageStatusForSelector(db, selector);
+  return {
+    requested: selector,
+    complete: status.complete,
+    freshness: "not_checked",
+    coveringSelectors: status.coveringSelectors,
+  };
 }
 
 function makeLikeSnippet(content: string, query: string): string {

@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, test } from "vitest";
-import Database from "better-sqlite3";
 import { spawn } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -10,9 +9,7 @@ import { INDEX_VERSION } from "./env";
 import { syncSessions } from "./indexer";
 import {
   classifyQueryProfile,
-  CurrentStateDbError,
   findSessions,
-  getCurrentSessions,
   getMessagePage,
   getMessageRange,
 } from "./query";
@@ -26,83 +23,6 @@ afterEach(() => {
 });
 
 describe("cxs retrieval flow", () => {
-  test("current returns latest thread candidates for cwd from Codex state db", () => {
-    const base = mkdtempSync(join(tmpdir(), "cxs-current-"));
-    tempDirs.push(base);
-    const stateDbPath = join(base, "state.sqlite");
-    const db = new Database(stateDbPath);
-    db.exec(`
-      CREATE TABLE threads (
-        id TEXT PRIMARY KEY,
-        rollout_path TEXT NOT NULL,
-        cwd TEXT NOT NULL,
-        title TEXT NOT NULL,
-        updated_at_ms INTEGER
-      )
-    `);
-    const insertThread = db.prepare(
-      "INSERT INTO threads (id, rollout_path, cwd, title, updated_at_ms) VALUES (?, ?, ?, ?, ?)",
-    );
-    insertThread.run("11111111-1111-4111-8111-111111111111", "/tmp/a.jsonl", "/tmp/project", "older", 100);
-    insertThread.run("22222222-2222-4222-8222-222222222222", "/tmp/b.jsonl", "/tmp/project", "newer", 200);
-    insertThread.run("33333333-3333-4333-8333-333333333333", "/tmp/c.jsonl", "/tmp/other", "other", 300);
-    db.close();
-
-    const result = getCurrentSessions(stateDbPath, "/tmp/project", 10);
-    expect(result.cwd).toBe("/tmp/project");
-    expect(result.candidates.map((candidate) => candidate.sessionUuid)).toEqual([
-      "22222222-2222-4222-8222-222222222222",
-      "11111111-1111-4111-8111-111111111111",
-    ]);
-    expect(result.candidates[0]?.filePath).toBe("/tmp/b.jsonl");
-  });
-
-  test("current throws CurrentStateDbError when state db lacks 'threads' table", () => {
-    const base = mkdtempSync(join(tmpdir(), "cxs-current-schema-"));
-    tempDirs.push(base);
-    const stateDbPath = join(base, "state.sqlite");
-    const db = new Database(stateDbPath);
-    db.exec("CREATE TABLE other (id INTEGER PRIMARY KEY)");
-    db.close();
-
-    let caught: unknown = null;
-    try {
-      getCurrentSessions(stateDbPath, "/tmp/project", 10);
-    } catch (error) {
-      caught = error;
-    }
-    expect(caught).toBeInstanceOf(CurrentStateDbError);
-    expect((caught as Error).message).toContain("threads");
-  });
-
-  test("current throws CurrentStateDbError when 'threads' is missing required columns", () => {
-    const base = mkdtempSync(join(tmpdir(), "cxs-current-cols-"));
-    tempDirs.push(base);
-    const stateDbPath = join(base, "state.sqlite");
-    const db = new Database(stateDbPath);
-    // Table exists but lacks rollout_path & updated_at_ms — simulates an
-    // upstream rename of the columns we SELECT in getCurrentSessions.
-    db.exec(`
-      CREATE TABLE threads (
-        id TEXT PRIMARY KEY,
-        cwd TEXT NOT NULL,
-        title TEXT NOT NULL
-      )
-    `);
-    db.close();
-
-    let caught: unknown = null;
-    try {
-      getCurrentSessions(stateDbPath, "/tmp/project", 10);
-    } catch (error) {
-      caught = error;
-    }
-    expect(caught).toBeInstanceOf(CurrentStateDbError);
-    const message = (caught as Error).message;
-    expect(message).toContain("rollout_path");
-    expect(message).toContain("updated_at_ms");
-  });
-
   test("sync -> find -> read-range -> read-page works on fixture sessions", async () => {
     const base = mkdtempSync(join(tmpdir(), "cxs-test-"));
     tempDirs.push(base);
@@ -184,6 +104,30 @@ describe("cxs retrieval flow", () => {
     expect(range.rangeStartSeq).toBe(1);
     expect(range.rangeEndSeq).toBe(2);
     expect(range.messages.map((message) => message.seq)).toEqual([1, 2]);
+  });
+
+  test("read-page reports coverage for sessions synced from a nonstandard root", async () => {
+    const base = mkdtempSync(join(tmpdir(), "cxs-nonstandard-root-"));
+    tempDirs.push(base);
+    const root = join(base, "rawroot");
+    const day = join(root, "2026", "04", "22");
+    mkdirSync(day, { recursive: true });
+
+    writeFileSync(
+      join(day, "rollout-2026-04-22T10-00-00-45454545-4545-4545-8545-454545454545.jsonl"),
+      [
+        line("session_meta", { id: "45454545-4545-4545-8545-454545454545", cwd: "/tmp/nonstandard-root" }),
+        line("event_msg", { type: "user_message", message: "root attribution needle" }),
+      ].join("\n"),
+    );
+
+    const dbPath = join(base, "index.sqlite");
+    await syncSessions({ dbPath, selector: { kind: "all", root } });
+
+    const page = getMessagePage(dbPath, "45454545-4545-4545-8545-454545454545", 0, 10);
+
+    expect(page.coverage.entries).toHaveLength(1);
+    expect(page.coverage.entries[0]?.selector).toEqual({ kind: "all", root });
   });
 
   test("session title hit outranks broad incidental mentions", async () => {
@@ -332,6 +276,7 @@ describe("cxs retrieval flow", () => {
       1,
       1,
       INDEX_VERSION,
+      "",
     );
     db.close();
 
@@ -375,25 +320,25 @@ describe("cxs retrieval flow", () => {
       sessionUuid: "10101010-1010-4010-8010-101010101010",
       filePath: join(base, "title.jsonl"),
       title: "handoffneedle title",
-    }, 1, 1, INDEX_VERSION);
+    }, 1, 1, INDEX_VERSION, "");
     replaceSession(db, {
       ...common,
       sessionUuid: "20202020-2020-4020-8020-202020202020",
       filePath: join(base, "compact.jsonl"),
       compactText: "handoffneedle compact handoff",
-    }, 1, 1, INDEX_VERSION);
+    }, 1, 1, INDEX_VERSION, "");
     replaceSession(db, {
       ...common,
       sessionUuid: "30303030-3030-4030-8030-303030303030",
       filePath: join(base, "summary.jsonl"),
       summaryText: "handoffneedle derived summary",
-    }, 1, 1, INDEX_VERSION);
+    }, 1, 1, INDEX_VERSION, "");
     replaceSession(db, {
       ...common,
       sessionUuid: "40404040-4040-4040-8040-404040404040",
       filePath: join(base, "reasoning.jsonl"),
       reasoningSummaryText: "handoffneedle reasoning summary",
-    }, 1, 1, INDEX_VERSION);
+    }, 1, 1, INDEX_VERSION, "");
     db.close();
 
     const found = findSessions(dbPath, "handoffneedle", 10);
@@ -470,6 +415,7 @@ describe("cxs retrieval flow", () => {
       1,
       1,
       INDEX_VERSION,
+      "",
     );
     db.close();
 
@@ -517,7 +463,7 @@ describe("cxs retrieval flow", () => {
           sourceKind: "event_msg",
         },
       ],
-    }, 1, 1, INDEX_VERSION);
+    }, 1, 1, INDEX_VERSION, "");
 
     // Message-only control: query appears only in a message body, neither
     // title nor any session-level field carries it.
@@ -541,7 +487,7 @@ describe("cxs retrieval flow", () => {
           sourceKind: "event_msg",
         },
       ],
-    }, 1, 1, INDEX_VERSION);
+    }, 1, 1, INDEX_VERSION, "");
 
     db.close();
 
@@ -600,7 +546,7 @@ describe("cxs retrieval flow", () => {
           sourceKind: "event_msg",
         },
       ],
-    }, 1, 1, INDEX_VERSION);
+    }, 1, 1, INDEX_VERSION, "");
 
     db.close();
 
@@ -645,7 +591,7 @@ describe("cxs retrieval flow", () => {
           sourceKind: "event_msg",
         },
       ],
-    }, 1, 1, INDEX_VERSION);
+    }, 1, 1, INDEX_VERSION, "");
 
     db.close();
 

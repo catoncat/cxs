@@ -1,264 +1,229 @@
 # cxs
 
-`cxs` 是一个面向本机 Codex 会话日志的渐进式检索 CLI。
+`cxs` is a local-first CLI for searching Codex session logs. It is designed for
+progressive retrieval: find the right session first, then read only the relevant
+range or page.
 
-它的目标不是“返回整场对话全文”，而是给 agent 或人一个低噪音的读取路径：
+Core workflow:
 
-`sync -> find -> read-range/read-page`
+```text
+status -> sync --selector -> find/list -> read-range/read-page
+```
 
-## 适用场景
+## What It Is
 
-- 查“之前那个 session 里是怎么修的”
-- 按关键词找最近的 Codex 历史
-- 先拿候选 session，再围绕命中点局部展开
-- 给 sidecar / GUI 工具提供本地 session retrieval engine
+- A CLI for indexed search over local Codex JSONL sessions.
+- A retrieval backend for agents, sidecars, and local tools that need session recall.
+- A manual-sync tool: `sync` is the only command that writes the SQLite index.
 
-## 非目标
+## What It Is Not
 
-- 不做实时 watcher / daemon / 自动 sync
-- 不做 GUI
-- 不直接绑定 live in-flight thread
-- 不返回未裁剪的全文默认输出
+- Not a GUI.
+- Not a watcher, daemon, or realtime sync service.
+- Not a live in-flight thread attachment layer.
+- Not a default full-transcript dumper.
 
-当前命令面：
+## Install
 
-- `cxs sync`
-- `cxs find <query>`
-- `cxs read-range <sessionUuid>`
-- `cxs read-page <sessionUuid>`
-- `cxs list`
-- `cxs stats`
-- `cxs current`
+Requirements:
 
-## CLI Install Guide
+- macOS or Linux. Windows users should use WSL.
+- Node.js `>= 22`.
+- Read access to `~/.codex/sessions`.
 
-> **平台支持**:**macOS / Linux only**(`darwin-arm64` / `darwin-x64` / `linux-x64` / `linux-arm64`)。Windows 走 WSL,我们没原生测过 Windows path。
-
-### npm 全局安装(推荐,需要 Node 22+)
+Install the CLI globally:
 
 ```bash
 npm i -g @act0r/cxs
+cxs --help
 ```
 
-装出来的命令是 `cxs`。当前唯一发布形态是 Node.js npm 包,不再发布 standalone binary。
+The installed command is `cxs`. The package is scoped because the unscoped
+`cxs` package name is already taken on npm. The current distribution is the npm
+package only; no standalone binary is published.
 
-也可以一次性用 npx:
+For one-off usage:
 
 ```bash
-npx @act0r/cxs --help
+npx @act0r/cxs@latest --help
+npx @act0r/cxs@latest status --json
 ```
 
-> 包名是 scoped 的,因为 npm 上 `cxs` 已被 css-in-js 库占用。
+## Quick Start
 
-### 从源码(开发者 / 需要 PR)
+Inspect available sources and index coverage:
 
 ```bash
-git clone https://github.com/catoncat/cxs.git
-cd cxs
-npm install
-npm run cxs -- --version    # 通过 tsx 直接跑 cli.ts
+cxs status --json
 ```
 
-完整工程命令:`npm run check`(tsc + vitest)、`npm run build`(esbuild bundle 出 `dist/cli.js`)、`npm run eval:perf`(真实大库基准)。
-
-### 首次使用建立索引
+Build coverage for a project:
 
 ```bash
-cxs sync
-cxs stats --json
+cxs sync --selector '{"kind":"cwd","root":"/Users/you/.codex/sessions","cwd":"/Users/you/work/project"}'
 ```
 
-没有单独的 `init` 命令；`sync` 会创建并更新索引。若直接用 `npx` 试跑:
+Replace the example paths with your own absolute paths.
+
+Search and read progressively:
 
 ```bash
-npx @act0r/cxs sync
-npx @act0r/cxs find "health check"
+cxs find "health check"
+cxs read-range <sessionUuid> --seq <matchSeq>
+cxs read-page <sessionUuid> --offset 0 --limit 20
 ```
 
-`--help` 应列出 `sync` / `find` / `read-range` / `read-page` / `list` / `stats` / `current`。
+You can run the same flow without global installation:
 
-### 数据目录
+```bash
+npx @act0r/cxs@latest sync --selector '{"kind":"all","root":"/Users/you/.codex/sessions"}'
+npx @act0r/cxs@latest find "health check"
+```
 
-索引默认写到 `~/.local/state/cxs/index.sqlite`(XDG state 约定;`$XDG_STATE_HOME` 也尊重)。`CXS_DATA_DIR` 环境变量优先级最高:
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| `cxs status` | Show execution context, source inventory, index state, and coverage. Does not write the index. |
+| `cxs sync --selector <json>` | Scan selected Codex sessions and update the SQLite index. This is the only write command. |
+| `cxs find <query>` | Search indexed sessions and return ranked session candidates with minimal snippets. |
+| `cxs read-range <sessionUuid>` | Read a small message window around a matched sequence or in-session query. |
+| `cxs read-page <sessionUuid>` | Read a session page by offset and limit. |
+| `cxs list` | List indexed sessions without full-text search. |
+| `cxs stats` | Show index statistics. |
+
+All commands that read indexed content support `--json`. Read commands fail
+cleanly if the index has not been created yet.
+
+## Selectors
+
+`sync` requires an explicit selector. Query commands can also accept selectors to
+constrain already-indexed results.
+
+```text
+{"kind":"all","root":"/Users/you/.codex/sessions"}
+{"kind":"date_range","root":"/Users/you/.codex/sessions","fromDate":"2026-04-01","toDate":"2026-04-30"}
+{"kind":"cwd","root":"/Users/you/.codex/sessions","cwd":"/Users/you/work/project"}
+{"kind":"cwd_date_range","root":"/Users/you/.codex/sessions","cwd":"/Users/you/work/project","fromDate":"2026-04-01","toDate":"2026-04-30"}
+```
+
+Example list query scoped to one project:
+
+```bash
+cxs list --selector '{"kind":"cwd","root":"/Users/you/.codex/sessions","cwd":"/Users/you/work/project"}' --sort ended -n 10
+```
+
+## Sync And Storage
+
+By default, `cxs` reads Codex sessions from `~/.codex/sessions` and stores its
+index at:
+
+```text
+~/.local/state/cxs/index.sqlite
+```
+
+`$XDG_STATE_HOME` is respected, and `CXS_DATA_DIR` has the highest priority:
 
 ```bash
 export CXS_DATA_DIR="$HOME/.config/cxs"
 ```
 
-**自动迁移**:之前装过 cxs 0.2.0 及以下、索引在 `~/.cache/cxs/` 的用户,首次跑新版 `cxs sync` 会自动 `rename` 整个目录到 `~/.local/state/cxs/`,**不需要重 sync**(240 MB 索引不会重建)。如果新位置已有数据,迁移跳过,旧 cache 留在原地等用户手动处理。
+Sync is strict by default. If any selected file fails to parse or write, `sync`
+exits non-zero with per-file diagnostics and does not commit partial coverage.
+On success, strict sync reconciles the selected index slice to the current source
+snapshot: selected sessions whose source JSONL no longer exists are removed
+before complete coverage is written.
+Pass `--best-effort` only when you explicitly want successful files written
+despite failures; best-effort sync does not record complete coverage.
 
-### 要求
+Indexes created before `cxs-v6-selector-provenance` should be refreshed with
+`sync --selector` so date selectors and read coverage use the current
+`path_date` and source-root provenance fields.
 
-- 本机可读 `~/.codex/sessions`
-- Node.js `>= 22`
+Older `cxs <= 0.2.0` indexes stored under `~/.cache/cxs/` are migrated
+automatically on first run when the new state directory is empty. If the new
+directory already has data, migration is skipped and the old cache is left in
+place.
 
-## 用法
+## Retrieval Model
 
-默认会读取：
+The current retrieval chain is:
 
-- Codex sessions：`~/.codex/sessions`
-- 标题索引：`~/.codex/session_index.jsonl`
-- SQLite 索引：项目内 `./data/index.sqlite`
-
-先建立索引：
-
-```bash
-cxs sync
+```text
+message/session recall -> session heuristic rerank -> read-range/read-page
 ```
 
-`sync` 默认是严格模式：任一文件解析或写库失败都会带着 per-file 诊断非零退出，并且不会提交半截索引。只有显式传 `--best-effort` 时，才会继续写入成功部分。
+Implemented recall surfaces:
 
-搜索会话：
+- `messages_fts` over real user and assistant messages.
+- `sessions_fts` over `title + summary_text + compact_text + reasoning_summary_text`.
+- Session-level FTS weights: title `8.0`, compact `4.0`, summary `3.0`, reasoning summary `1.2`.
+- A small LIKE fallback for rare zero-token CJK message queries.
 
-```bash
-cxs find "health check"
-```
+`find` returns enough context to choose the next read step. If a result only
+matches session-level fields, it is marked with `matchSource = "session"` and
+has no message anchor; use `read-page` for those results.
 
-`find` 会返回标题、派生的 session summary，以及当前锚点 snippet，方便先做轻量筛选再决定是否 `read-range`。如果命中只来自 session-level title/summary/compact/reasoning summary，结果会标为 `matchSource = "session"`，这时先用 `read-page` 浏览整场会话。
+Not implemented yet:
 
-围绕命中点读取局部上下文：
+- Resource-level reranking.
+- Richer projection or event replay.
+- Range cache.
+- Duplicate-family collapse or diversity control.
+- Strong gold-set acceptance suite.
 
-```bash
-cxs read-range <sessionUuid> --seq 12
-cxs read-range <sessionUuid> --query "health check"
-```
+More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Roadmap:
+[docs/ROADMAP.md](docs/ROADMAP.md).
 
-分页读取整场会话：
+## Development
 
-```bash
-cxs read-page <sessionUuid> --offset 0 --limit 20
-```
-
-列出已索引 session（不做全文检索）：
-
-```bash
-cxs list --limit 20
-cxs list --cwd hammerspoon --since 2026-04-01 --sort ended
-```
-
-索引状态：
+Run from source:
 
 ```bash
-cxs stats
+git clone https://github.com/catoncat/cxs.git
+cd cxs
+npm install
+npm run cxs -- --version
 ```
 
-## 快速开始
-
-下面以已安装的 `cxs` 命令为例；源码 checkout 中可把 `cxs` 替换成 `npm run cxs --`。
-
-首次使用建议按下面顺序：
-
-```bash
-cxs sync
-cxs find "health check"
-cxs read-range <sessionUuid> --seq <matchSeq>
-```
-
-如果你已经知道当前项目路径，也可以先缩范围：
-
-```bash
-cxs list --cwd /Users/you/work/project --sort ended -n 10
-```
-
-## 当前实现边界
-
-当前 retrieval 主链是：
-
-`message/session recall -> session heuristic rerank -> read-range/read-page`
-
-已经落地的能力：
-
-- `messages_fts` 驱动的候选召回
-- `sessions_fts(title + summary_text + compact_text + reasoning_summary_text)` 驱动的 session-level 召回
-- `summary_text` 派生摘要
-- JSONL `type=compacted` handoff 与 `response_item.reasoning.summary` 低成本接入
-- session-level FTS 字段权重：title 8.0、compact 4.0、summary 3.0、reasoning summary 1.2
-- session 级 heuristic rerank
-- manual eval 导出与 batch compare
-
-还没落地的能力：
-
-- 真正的 resource-level reranker
-- duplicate collapse / diversity control
-
-更完整的实现说明见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，后续路线见 [docs/ROADMAP.md](docs/ROADMAP.md)。
-
-## 常见问题
-
-### 为什么 `find` 没搜到我刚刚的 session？
-
-先看索引时间：
-
-```bash
-cxs stats --json
-```
-
-如果 `lastSyncAt` 很旧，先重新同步：
-
-```bash
-cxs sync
-```
-
-### 为什么有些中文短 query 命中不稳定？
-
-当前主召回仍以 message FTS 为主，极少数零 token CJK query 才会回退到 LIKE。短 query 本身信息量低，建议换成更长的词组或加项目上下文。
-
-### 为什么不做自动实时同步？
-
-这是刻意的产品边界。当前接受“手动触发的增量 sync”，而不是 watcher/daemon。
-
-## 开发
-
-运行测试：
+Common checks:
 
 ```bash
 npm run check
-```
-
-跑手工评测：
-
-```bash
 npm run eval:manual
-```
-
-`eval:manual` 的 pass 判定现在采用 “Top-K 窗口内所有已配置 predicate 都必须命中” 的语义，并会把 predicate 级别结果写进导出 README/scorecard，避免单个弱命中把整条 query 误记为通过。
-
-对比两次评测批次的 Top1 变化：
-
-```bash
 npm run eval:compare -- data/cxs-eval/<before-batch> data/cxs-eval/<after-batch>
 ```
 
-## 开源协作
+`npm run check` runs TypeScript and Vitest. `eval:manual` exports manual eval
+results; `eval:compare` compares two eval batches.
 
-- 项目规则见 [AGENTS.md](AGENTS.md)
-- 协作说明见 [CONTRIBUTING.md](CONTRIBUTING.md)
-- 当前公开目标是“可接手、可验证、可继续演进”的源码仓库；发布流程以 npm 包为唯一分发面
+Project rules and contribution notes:
 
-## 可安装 Skill Package
+- [AGENTS.md](AGENTS.md)
+- [CONTRIBUTING.md](CONTRIBUTING.md)
 
-仓库内保留一个发行用 skill package，刻意不放在 `.agents/skills` 下，避免 clone 本仓库后被当前项目的 agent runtime 当成本项目 workflow 自动加载：
+## Agent Skill Package
 
-- `skill-packages/cxs`
+This repository also publishes an installable agent skill package:
 
-推荐用 `npx skills add` 安装，而不是手动复制：
+```text
+skill-packages/cxs
+```
+
+Install or update it with:
 
 ```bash
 npx skills add catoncat/cxs --full-depth --skill cxs -g -a codex -y
 ```
 
-如果只想先看仓库里有哪些 skill：
+List available skills in the repository:
 
 ```bash
 npx skills add catoncat/cxs --full-depth --list
 ```
 
-CLI install guide:
+Important boundaries:
 
-`https://github.com/catoncat/cxs#cli-install-guide`
-
-注意：
-
-- `npx skills add` 只安装 agent skill，不安装 CLI 本体
-- 安装或更新 skill 后，需要重启 Codex / 开新 session 才会被 agent 发现
-- 推荐先按 CLI install guide 让 `cxs` 可执行，或设置 `CXS_BIN=/absolute/path/to/bin/cxs`
+- `npx skills add` installs the agent skill only; it does not install the `cxs` CLI.
+- Install the CLI with `npm i -g @act0r/cxs`, use `npx @act0r/cxs@latest`, or set `CXS_BIN` for the skill.
+- Restart Codex or open a new session after installing or updating the skill.

@@ -20,21 +20,21 @@
 用户说：`上次我配 cf tunnel 是怎么弄的`
 
 ```bash
-"${CXS_BIN:-cxs}" status --json
-"${CXS_BIN:-cxs}" sync --selector '{"kind":"all","root":"/Users/me/.codex/sessions"}' --json
-"${CXS_BIN:-cxs}" find "cf tunnel" --json -n 5
+"${CXSD_BIN:-cxsd}" status --json
+"${CXSD_BIN:-cxsd}" sync --selector '{"kind":"all","root":"/Users/me/.codex/sessions"}' --json
+"${CXSD_BIN:-cxsd}" find "cf tunnel" --json -n 5
 ```
 
 然后：
 
 ```bash
-"${CXS_BIN:-cxs}" read-range <sessionUuid> --seq <matchSeq> --before 4 --after 8 --json
+"${CXSD_BIN:-cxsd}" read-range <sessionUuid> --seq <matchSeq> --before 4 --after 8 --json
 ```
 
 只有 `read-range` 还缺前情后果时，再：
 
 ```bash
-"${CXS_BIN:-cxs}" read-page <sessionUuid> --offset 0 --limit 40 --json
+"${CXSD_BIN:-cxsd}" read-page <sessionUuid> --offset 0 --limit 40 --json
 ```
 
 ## Worked Scenario 2
@@ -44,15 +44,15 @@
 先按 cwd + 时间缩范围：
 
 ```bash
-"${CXS_BIN:-cxs}" status --json
-"${CXS_BIN:-cxs}" sync --selector '{"kind":"cwd_date_range","root":"/Users/me/.codex/sessions","cwd":"/Users/me/work/hammerspoon","fromDate":"2026-04-15","toDate":"2026-04-30"}' --json
-"${CXS_BIN:-cxs}" list --selector '{"kind":"cwd_date_range","root":"/Users/me/.codex/sessions","cwd":"/Users/me/work/hammerspoon","fromDate":"2026-04-15","toDate":"2026-04-30"}' --json
+"${CXSD_BIN:-cxsd}" status --json
+"${CXSD_BIN:-cxsd}" sync --selector '{"kind":"cwd_date_range","root":"/Users/me/.codex/sessions","cwd":"/Users/me/work/hammerspoon","fromDate":"2026-04-15","toDate":"2026-04-30"}' --json
+"${CXSD_BIN:-cxsd}" list --selector '{"kind":"cwd_date_range","root":"/Users/me/.codex/sessions","cwd":"/Users/me/work/hammerspoon","fromDate":"2026-04-15","toDate":"2026-04-30"}' --json
 ```
 
 再在候选 session 内局部重定位：
 
 ```bash
-"${CXS_BIN:-cxs}" read-range <sessionUuid> --query "IME" --before 4 --after 8 --json
+"${CXSD_BIN:-cxsd}" read-range <sessionUuid> --query "IME" --before 4 --after 8 --json
 ```
 
 ## Worked Scenario 3
@@ -62,9 +62,9 @@
 先按当前 repo 路径列最近 session：
 
 ```bash
-"${CXS_BIN:-cxs}" status --json
-"${CXS_BIN:-cxs}" sync --selector '{"kind":"cwd","root":"/Users/me/.codex/sessions","cwd":"/absolute/path/to/current/repo"}' --json
-"${CXS_BIN:-cxs}" list --selector '{"kind":"cwd","root":"/Users/me/.codex/sessions","cwd":"/absolute/path/to/current/repo"}' --sort ended -n 8 --json
+"${CXSD_BIN:-cxsd}" status --json
+"${CXSD_BIN:-cxsd}" sync --selector '{"kind":"cwd","root":"/Users/me/.codex/sessions","cwd":"/absolute/path/to/current/repo"}' --json
+"${CXSD_BIN:-cxsd}" list --selector '{"kind":"cwd","root":"/Users/me/.codex/sessions","cwd":"/absolute/path/to/current/repo"}' --sort ended -n 8 --json
 ```
 
 不要把 `cwd` 直接当主题真相。至少再看：

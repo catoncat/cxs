@@ -2,6 +2,7 @@ node_modules/
 dist/
 data/
 *.tgz
+.DS_Store
 .claude/
 .entire/
 .intent/

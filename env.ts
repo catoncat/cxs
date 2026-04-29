@@ -33,9 +33,7 @@ const DATA_DIR = process.env.CXS_DATA_DIR
 
 export const DEFAULT_DB_PATH = resolve(DATA_DIR, "index.sqlite");
 export const DEFAULT_CODEX_DIR = resolve(homedir(), ".codex", "sessions");
-export const CODEX_TITLE_INDEX_PATH = resolve(homedir(), ".codex", "session_index.jsonl");
-export const DEFAULT_CODEX_STATE_DB_PATH = resolve(homedir(), ".codex", "state_5.sqlite");
-export const INDEX_VERSION = "cxs-v5-session-field-weights";
+export const INDEX_VERSION = "cxs-v6-selector-provenance";
 
 export function ensureDataDir(): void {
   migrateLegacyCacheDir(LEGACY_CACHE_DIR, DATA_DIR);

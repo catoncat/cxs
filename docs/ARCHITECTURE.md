@@ -4,19 +4,19 @@
 
 `cxs` 是一个面向本机 Codex session 日志的渐进式检索 CLI，当前架构是：
 
-`sync -> message/session recall -> session heuristic rerank -> read-range/read-page`
+`status -> sync --selector -> message/session recall -> session heuristic rerank -> read-range/read-page`
 
 它已经可用，但仍是轻量 retrieval 后端，不是完整的 resource-level retrieval 系统。
 
 ## 当前命令面
 
 - `cxs sync`
+- `cxs status`
 - `cxs find <query>`
 - `cxs read-range <sessionUuid>`
 - `cxs read-page <sessionUuid>`
 - `cxs list`
 - `cxs stats`
-- `cxs current`
 
 这套命令面已经定型，不再保留 `window/session` 旧别名语义。
 
@@ -24,7 +24,11 @@
 
 ### 1. 同步
 
-[indexer.ts](/Users/envvar/work/repos/cxs/indexer.ts) 扫描 `~/.codex/sessions` 下的 JSONL session 文件，按文件 `mtime`、`size` 和 `indexVersion` 做增量判断。
+[status.ts](/Users/envvar/work/repos/cxs/status.ts) 返回执行上下文、source inventory、index 状态与 coverage 状态。它可以扫描 raw sessions 的 metadata，但不回答内容问题。
+
+[indexer.ts](/Users/envvar/work/repos/cxs/indexer.ts) 按显式 selector 扫描 `~/.codex/sessions` 下的 JSONL session 文件，按文件 `mtime`、`size` 和 `indexVersion` 做增量判断。
+
+strict sync 在写 complete coverage 前会 reconcile selector 范围：当前 source snapshot 中不存在、被过滤或不能解析成 session 的旧 index row 会被删除。
 
 [parser.ts](/Users/envvar/work/repos/cxs/parser.ts) 只抽取 `event_msg` 里的：
 
@@ -39,6 +43,9 @@
 
 - `sessions`
 - `messages`
+- `coverage`
+
+`sessions.source_root` 持久化该 session 被同步时使用的 selector root，read-range / read-page 的 coverage attribution 基于这个字段，而不是从文件路径命名约定反推。
 
 以及两个全文索引：
 
@@ -51,6 +58,7 @@ SQLite 访问层当前已经按 reader / writer 分流：
 
 - `sync` 走 writer 连接，负责 schema ensure、WAL 初始化与写入事务
 - `find` / `read-range` / `read-page` / `list` / `stats` 走只读连接
+- `status` 不写 index；它可以读取 raw metadata 和只读 SQLite
 - 读路径默认设置 `busy_timeout`，避免并发 agent 多查时把瞬时锁竞争直接暴露成 `SQLITE_BUSY`
 - `sync` 额外有文件级 single-writer lock；遇到活跃 writer 会等待，遇到 dead pid 残留锁会自动清理
 
@@ -97,6 +105,9 @@ SQLite 访问层当前已经按 reader / writer 分流：
 - `reasoning_summary_text` 解析 `response_item.reasoning.summary`
 - `sessions_fts(title + summary_text + compact_text + reasoning_summary_text)` session-level recall
 - strict / best-effort 两种 sync 语义
+- explicit selector sync
+- source inventory
+- complete coverage 记录
 - manual eval 导出
 - eval batch compare
 
@@ -108,6 +119,7 @@ SQLite 访问层当前已经按 reader / writer 分流：
 - richer projection / event replay / range cache
 - duplicate collapse / diversity control
 - 强约束 gold set / rubric / error taxonomy
+- watcher / daemon / realtime sync
 
 ## 为什么当前文档改成这版
 

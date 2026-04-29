@@ -1,11 +1,8 @@
-import { existsSync } from "node:fs";
 import { Command } from "commander";
 import packageJson from "./package.json" with { type: "json" };
 import {
-  DEFAULT_CODEX_STATE_DB_PATH,
   DEFAULT_DB_PATH,
   migrateLegacyCacheDirIfNeeded,
-  resolveCodexDir,
 } from "./env";
 import { IndexUnavailableError } from "./db";
 
@@ -14,26 +11,26 @@ import { IndexUnavailableError } from "./db";
 // `cxs sync`. Idempotent + silent on failure (worst case is a re-sync).
 migrateLegacyCacheDirIfNeeded();
 import {
-  printCurrentSessions,
   printFindResults,
   printReadPage,
   printReadRangeResult,
   printSessionList,
   printStats,
+  printStatus,
   printSyncSummary,
 } from "./format";
 import { SyncError, syncSessions } from "./indexer";
 import {
   collectStats,
-  CurrentStateDbError,
   findSessions,
-  getCurrentSessions,
   getMessagePage,
   getMessageRange,
   listSessionSummaries,
 } from "./query";
+import { parseSelectorJson, SelectorParseError } from "./selector";
+import { collectStatus } from "./status";
 import { SyncLockTimeoutError } from "./sync-lock";
-import type { SessionListSort } from "./types";
+import type { Selector, SessionListSort } from "./types";
 
 const program = new Command();
 
@@ -43,46 +40,33 @@ program
   .version(packageJson.version);
 
 program
-  .command("current")
-  .description("按 cwd 返回当前候选 session，不做全文检索")
-  .option("--cwd <path>", "显式指定 cwd，默认当前工作目录")
-  .option("-n, --limit <n>", "返回条数上限", "100")
-  .option("--state-db <path>", "覆盖默认 Codex state SQLite 路径", DEFAULT_CODEX_STATE_DB_PATH)
+  .command("status")
+  .description("返回执行上下文、source inventory、index 与 coverage 状态")
+  .option("--root <dir>", "覆盖默认 sessions 根目录")
+  .option("--db <path>", "覆盖默认数据库路径", DEFAULT_DB_PATH)
   .option("--json", "输出 JSON")
   .action((options) => {
-    const cwd = options.cwd ?? process.cwd();
-    const jsonMode = Boolean(options.json);
-    try {
-      if (!existsSync(options.stateDb)) {
-        throw new CurrentStateDbError(`state db not found: ${options.stateDb}`);
-      }
-      const result = getCurrentSessions(options.stateDb, cwd, parsePositiveInt(options.limit, 100));
-      if (jsonMode) {
-        console.log(JSON.stringify(result, null, 2));
-        return;
-      }
-      printCurrentSessions(result.cwd, result.candidates);
-    } catch (error) {
-      if (error instanceof CurrentStateDbError) {
-        emitCurrentError(error, jsonMode);
-        return;
-      }
-      throw error;
+    const status = collectStatus({ rootDir: options.root, dbPath: options.db, cwd: process.cwd() });
+    if (options.json) {
+      console.log(JSON.stringify(status, null, 2));
+      return;
     }
+    printStatus(status);
   });
 
 program
   .command("sync")
   .description("扫描并同步本地 Codex sessions 到 SQLite 索引")
-  .option("--root <dir>", "覆盖默认 sessions 根目录")
+  .option("--selector <json>", "结构化同步范围 JSON")
   .option("--db <path>", "覆盖默认数据库路径", DEFAULT_DB_PATH)
   .option("--best-effort", "即使部分文件失败也继续写入可成功部分")
   .option("--json", "输出 JSON")
   .action(async (options) => {
     try {
+      const selector = requireSelector(options.selector);
       const summary = await syncSessions({
         dbPath: options.db,
-        rootDir: resolveCodexDir(options.root),
+        selector,
         bestEffort: options.bestEffort,
       });
       if (options.json) {
@@ -109,6 +93,10 @@ program
         process.exitCode = 1;
         return;
       }
+      if (error instanceof SelectorParseError) {
+        emitSelectorError(error, Boolean(options.json));
+        return;
+      }
       throw error;
     }
   });
@@ -117,12 +105,14 @@ program
   .command("find <query>")
   .description("搜索相关 session，返回最小必要命中")
   .option("-n, --limit <n>", "返回条数", "10")
+  .option("--selector <json>", "结构化查询范围 JSON")
   .option("--db <path>", "覆盖默认数据库路径", DEFAULT_DB_PATH)
   .option("--json", "输出 JSON")
   .action((query, options) => {
     runReadCommand(Boolean(options.json), () => {
       const limit = parsePositiveInt(options.limit, 10);
-      const result = findSessions(options.db, query, limit);
+      const selector = optionalSelector(options.selector);
+      const result = findSessions(options.db, query, limit, selector);
       if (options.json) {
         console.log(JSON.stringify(result, null, 2));
         return;
@@ -197,6 +187,7 @@ program
   .description("列出已索引的 session（不做全文检索）")
   .option("--cwd <needle>", "cwd 子串过滤（大小写不敏感）")
   .option("--since <iso>", "只看 ended_at >= 指定时间的 session")
+  .option("--selector <json>", "结构化查询范围 JSON")
   .option("--sort <key>", "排序键：ended|started|messages", "ended")
   .option("-n, --limit <n>", "返回条数", "20")
   .option("--db <path>", "覆盖默认数据库路径", DEFAULT_DB_PATH)
@@ -204,9 +195,11 @@ program
   .action((options) => {
     runReadCommand(Boolean(options.json), () => {
       const sort = normalizeListSort(options.sort);
+      const selector = optionalSelector(options.selector);
       const result = listSessionSummaries(options.db, {
         cwd: options.cwd,
         since: options.since,
+        selector: selector ?? undefined,
         sort,
         limit: parsePositiveInt(options.limit, 20),
       });
@@ -264,6 +257,10 @@ function runReadCommand(jsonMode: boolean, action: () => void): void {
       emitIndexUnavailableError(error, jsonMode);
       return;
     }
+    if (error instanceof SelectorParseError) {
+      emitSelectorError(error, jsonMode);
+      return;
+    }
     throw error;
   }
 }
@@ -292,11 +289,11 @@ function emitIndexUnavailableError(error: IndexUnavailableError, jsonMode: boole
   process.exitCode = 1;
 }
 
-function emitCurrentError(error: CurrentStateDbError, jsonMode: boolean): void {
+function emitSelectorError(error: SelectorParseError, jsonMode: boolean): void {
   if (jsonMode) {
     console.log(
       JSON.stringify(
-        { error: { code: "state_db_unavailable", message: error.message } },
+        { error: { code: error.message.includes("requires --selector") ? "selector_required" : "invalid_selector", message: error.message } },
         null,
         2,
       ),
@@ -305,4 +302,15 @@ function emitCurrentError(error: CurrentStateDbError, jsonMode: boolean): void {
     console.error(error.message);
   }
   process.exitCode = 1;
+}
+
+function requireSelector(value: string | undefined): Selector {
+  if (!value) {
+    throw new SelectorParseError("sync requires --selector with an explicit selector JSON object");
+  }
+  return parseSelectorJson(value);
+}
+
+function optionalSelector(value: string | undefined): Selector | null {
+  return value ? parseSelectorJson(value) : null;
 }

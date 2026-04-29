@@ -24,117 +24,144 @@ afterEach(() => {
 });
 
 describe("cxs cli", () => {
-  test("help only shows current/sync/find/read-range/read-page/list/stats", async () => {
+  test("help only shows status/sync/find/read-range/read-page/list/stats", async () => {
     const result = await runCli(["--help"]);
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("current");
+    expect(result.stdout).toContain("status");
     expect(result.stdout).toContain("sync");
     expect(result.stdout).toContain("find");
     expect(result.stdout).toContain("read-range");
     expect(result.stdout).toContain("read-page");
     expect(result.stdout).toContain("list");
     expect(result.stdout).toContain("stats");
+    expect(result.stdout).not.toContain("current");
     expect(result.stdout).not.toContain("window");
     expect(result.stdout).not.toContain("\n  session ");
   });
 
-  test("current returns candidate sessions for cwd from state db", async () => {
-    const base = mkdtempSync(join(tmpdir(), "cxs-cli-current-"));
+  test("status returns source inventory without an index", async () => {
+    const base = mkdtempSync(join(tmpdir(), "cxs-cli-status-"));
     tempDirs.push(base);
-    const stateDbPath = join(base, "state.sqlite");
-    const db = new Database(stateDbPath);
-    db.exec(`
-      CREATE TABLE threads (
-        id TEXT PRIMARY KEY,
-        rollout_path TEXT NOT NULL,
-        cwd TEXT NOT NULL,
-        title TEXT NOT NULL,
-        updated_at_ms INTEGER
-      )
-    `);
-    const insertThread = db.prepare(
-      "INSERT INTO threads (id, rollout_path, cwd, title, updated_at_ms) VALUES (?, ?, ?, ?, ?)",
+    const sessionsRoot = join(base, "sessions", "2026", "04", "20");
+    mkdirSync(sessionsRoot, { recursive: true });
+    writeFileSync(
+      join(sessionsRoot, "rollout-2026-04-20T10-00-00-11111111-1111-4111-8111-111111111111.jsonl"),
+      [
+        line("session_meta", { id: "11111111-1111-4111-8111-111111111111", cwd: "/tmp/alpha" }),
+        line("event_msg", { type: "user_message", message: "alpha private content must not be needed" }),
+      ].join("\n"),
     );
-    insertThread.run("aaaa1111-1111-4111-8111-111111111111", "/tmp/one.jsonl", "/tmp/picc", "older", 100);
-    insertThread.run("bbbb2222-2222-4222-8222-222222222222", "/tmp/two.jsonl", "/tmp/picc", "newer", 200);
-    db.close();
 
     const result = await runCli([
-      "current",
-      "--cwd",
-      "/tmp/picc",
-      "--state-db",
-      stateDbPath,
+      "status",
+      "--root",
+      join(base, "sessions"),
+      "--db",
+      join(base, "missing.sqlite"),
       "--json",
     ]);
     expect(result.exitCode).toBe(0);
     const payload = JSON.parse(result.stdout) as {
-      cwd: string;
-      candidates: Array<{ sessionUuid: string; filePath: string }>;
+      sourceInventory: {
+        totalFiles: number;
+        pathDateRange: { from: string | null; to: string | null };
+        cwdGroups: Array<{ cwd: string; fileCount: number; pathDateRange: { from: string | null; to: string | null } }>;
+      };
+      index: { exists: boolean };
     };
-    expect(payload.cwd).toBe("/tmp/picc");
-    expect(payload.candidates.map((candidate) => candidate.sessionUuid)).toEqual([
-      "bbbb2222-2222-4222-8222-222222222222",
-      "aaaa1111-1111-4111-8111-111111111111",
+    expect(payload.index.exists).toBe(false);
+    expect(payload.sourceInventory.totalFiles).toBe(1);
+    expect(payload.sourceInventory.pathDateRange).toEqual({ from: "2026-04-20", to: "2026-04-20" });
+    expect(payload.sourceInventory.cwdGroups).toEqual([
+      { cwd: "/tmp/alpha", fileCount: 1, pathDateRange: { from: "2026-04-20", to: "2026-04-20" } },
     ]);
-    expect(payload.candidates[0]?.filePath).toBe("/tmp/two.jsonl");
   });
 
-  test("current --json emits structured error when state db file is missing", async () => {
-    const base = mkdtempSync(join(tmpdir(), "cxs-cli-current-missing-"));
+  test("sync requires an explicit selector", async () => {
+    const base = mkdtempSync(join(tmpdir(), "cxs-cli-sync-selector-required-"));
     tempDirs.push(base);
-    const stateDbPath = join(base, "does-not-exist.sqlite");
 
-    const result = await runCli(["current", "--state-db", stateDbPath, "--json"]);
+    const result = await runCli(["sync", "--db", join(base, "index.sqlite"), "--json"]);
     expect(result.exitCode).toBe(1);
     const payload = JSON.parse(result.stdout) as {
       error: { code: string; message: string };
     };
-    expect(payload.error.code).toBe("state_db_unavailable");
-    expect(payload.error.message).toContain(stateDbPath);
+    expect(payload.error.code).toBe("selector_required");
+    expect(payload.error.message).toContain("--selector");
   });
 
-  test("current --json emits structured error when state db schema is unexpected", async () => {
-    const base = mkdtempSync(join(tmpdir(), "cxs-cli-current-schema-"));
+  test("sync with cwd selector writes coverage and find stays scoped", async () => {
+    const base = mkdtempSync(join(tmpdir(), "cxs-cli-selector-"));
     tempDirs.push(base);
-    const stateDbPath = join(base, "state.sqlite");
-    const db = new Database(stateDbPath);
-    db.exec("CREATE TABLE other (id INTEGER PRIMARY KEY)");
-    db.close();
+    const root = join(base, "sessions");
+    const day = join(root, "2026", "04", "21");
+    mkdirSync(day, { recursive: true });
+    writeFileSync(
+      join(day, "rollout-2026-04-21T10-00-00-22222222-2222-4222-8222-222222222222.jsonl"),
+      [
+        line("session_meta", { id: "22222222-2222-4222-8222-222222222222", cwd: "/tmp/alpha" }),
+        line("event_msg", { type: "user_message", message: "shared needle alpha" }),
+      ].join("\n"),
+    );
+    writeFileSync(
+      join(day, "rollout-2026-04-21T11-00-00-33333333-3333-4333-8333-333333333333.jsonl"),
+      [
+        line("session_meta", { id: "33333333-3333-4333-8333-333333333333", cwd: "/tmp/beta" }),
+        line("event_msg", { type: "user_message", message: "shared needle beta" }),
+      ].join("\n"),
+    );
 
-    const result = await runCli(["current", "--state-db", stateDbPath, "--json"]);
-    expect(result.exitCode).toBe(1);
-    const payload = JSON.parse(result.stdout) as {
-      error: { code: string; message: string };
+    const dbPath = join(base, "index.sqlite");
+    const selector = JSON.stringify({ kind: "cwd", root, cwd: "/tmp/alpha" });
+    const synced = await runCli(["sync", "--selector", selector, "--db", dbPath, "--json"]);
+    expect(synced.exitCode).toBe(0);
+    const syncPayload = JSON.parse(synced.stdout) as { coverage: { written: boolean; selector: { kind: string; cwd?: string } } };
+    expect(syncPayload.coverage.written).toBe(true);
+    expect(syncPayload.coverage.selector).toMatchObject({ kind: "cwd", cwd: "/tmp/alpha" });
+
+    const found = await runCli(["find", "shared needle", "--selector", selector, "--db", dbPath, "--json"]);
+    expect(found.exitCode).toBe(0);
+    const findPayload = JSON.parse(found.stdout) as {
+      results: Array<{ sessionUuid: string; cwd: string }>;
+      coverage: { complete: boolean; freshness: string };
     };
-    expect(payload.error.code).toBe("state_db_unavailable");
-    expect(payload.error.message).toContain("threads");
+    expect(findPayload.coverage.complete).toBe(true);
+    expect(findPayload.coverage.freshness).toBe("not_checked");
+    expect(findPayload.results.map((result) => result.cwd)).toEqual(["/tmp/alpha"]);
   });
 
-  test("current --json emits structured error when 'threads' is missing required columns", async () => {
-    const base = mkdtempSync(join(tmpdir(), "cxs-cli-current-cols-"));
+  test("status marks coverage stale when selected source files change", async () => {
+    const base = mkdtempSync(join(tmpdir(), "cxs-cli-coverage-stale-"));
     tempDirs.push(base);
-    const stateDbPath = join(base, "state.sqlite");
-    const db = new Database(stateDbPath);
-    db.exec(`
-      CREATE TABLE threads (
-        id TEXT PRIMARY KEY,
-        cwd TEXT NOT NULL,
-        title TEXT NOT NULL
-      )
-    `);
-    db.close();
+    const root = join(base, "sessions");
+    const day = join(root, "2026", "04", "21");
+    mkdirSync(day, { recursive: true });
+    const filePath = join(day, "rollout-2026-04-21T10-00-00-12121212-1212-4212-8212-121212121212.jsonl");
+    writeFileSync(
+      filePath,
+      [
+        line("session_meta", { id: "12121212-1212-4212-8212-121212121212", cwd: "/tmp/stale" }),
+        line("event_msg", { type: "user_message", message: "stale before" }),
+      ].join("\n"),
+    );
 
-    const result = await runCli(["current", "--state-db", stateDbPath, "--json"]);
-    expect(result.exitCode).toBe(1);
-    const payload = JSON.parse(result.stdout) as {
-      error: { code: string; message: string };
-    };
-    expect(payload.error.code).toBe("state_db_unavailable");
-    expect(payload.error.message).toContain("rollout_path");
-    // Crucially, raw SQLite errors should never reach stdout — exit 1 with a
-    // structured payload is the contract.
-    expect(result.stdout).not.toContain("SQLiteError");
+    const dbPath = join(base, "index.sqlite");
+    const selector = JSON.stringify({ kind: "cwd", root, cwd: "/tmp/stale" });
+    const synced = await runCli(["sync", "--selector", selector, "--db", dbPath, "--json"]);
+    expect(synced.exitCode).toBe(0);
+
+    writeFileSync(
+      filePath,
+      [
+        line("session_meta", { id: "12121212-1212-4212-8212-121212121212", cwd: "/tmp/stale" }),
+        line("event_msg", { type: "user_message", message: "stale after" }),
+      ].join("\n"),
+    );
+
+    const status = await runCli(["status", "--root", root, "--db", dbPath, "--json"]);
+    expect(status.exitCode).toBe(0);
+    const payload = JSON.parse(status.stdout) as { coverage: Array<{ freshness: string }> };
+    expect(payload.coverage[0]?.freshness).toBe("stale");
   });
 
   test("find text output points to read-range", async () => {
@@ -348,8 +375,8 @@ describe("cxs cli", () => {
 
     const result = await runCli([
       "sync",
-      "--root",
-      join(base, "sessions"),
+      "--selector",
+      JSON.stringify({ kind: "all", root: join(base, "sessions") }),
       "--db",
       join(base, "index.sqlite"),
     ]);

@@ -1,15 +1,23 @@
-import { readdirSync, statSync } from "node:fs";
-import type { Dirent } from "node:fs";
-import { join } from "node:path";
 import { DEFAULT_DB_PATH, INDEX_VERSION, ensureDataDir, resolveCodexDir } from "./env";
-import { deleteSessionByFilePath, getIndexedSessionMeta, openWriteDb, replaceSession } from "./db";
+import {
+  countSessionsForSelector,
+  deleteSessionsForSelectorExceptFilePaths,
+  deleteSessionByFilePath,
+  getIndexedSessionMeta,
+  openWriteDb,
+  replaceCoverage,
+  replaceSession,
+} from "./db";
 import { parseCodexSession } from "./parser";
+import { canonicalizeSelector } from "./selector";
+import { collectSourceSnapshot } from "./source-inventory";
 import { withSyncLock } from "./sync-lock";
-import type { ParsedSession, SyncErrorDetail, SyncSummary } from "./types";
+import type { CoverageWriteSummary, ParsedSession, Selector, SyncErrorDetail, SyncSummary } from "./types";
 
 interface SyncOptions {
   dbPath?: string;
   rootDir?: string;
+  selector?: Selector;
   bestEffort?: boolean;
 }
 
@@ -20,6 +28,7 @@ type SyncOperation =
       session: ParsedSession;
       rawFileMtime: number;
       rawFileSize: number;
+      pathDate: string;
       isUpdate: boolean;
     }
   | {
@@ -40,29 +49,34 @@ export class SyncError extends Error {
 export async function syncSessions(options: SyncOptions = {}): Promise<SyncSummary> {
   ensureDataDir();
   const dbPath = options.dbPath ?? DEFAULT_DB_PATH;
-  const rootDir = resolveCodexDir(options.rootDir);
+  const selector = canonicalizeSelector(options.selector ?? { kind: "all", root: resolveCodexDir(options.rootDir) });
   return withSyncLock(dbPath, async () => {
     const db = openWriteDb(dbPath);
-    const files = collectJsonlFiles(rootDir);
+    const sourceSnapshot = collectSourceSnapshot(selector);
     const operations: SyncOperation[] = [];
+    const unchangedFilePaths = new Set<string>();
 
     const summary: SyncSummary = {
-      scanned: files.length,
+      scanned: sourceSnapshot.fileCount,
       added: 0,
       updated: 0,
       skipped: 0,
       filtered: 0,
+      removed: 0,
       errors: 0,
       errorDetails: [],
+      selector,
+      coverage: skippedCoverage(selector, sourceSnapshot.fingerprint, sourceSnapshot.fileCount, "not_written"),
     };
 
     try {
-      for (const filePath of files) {
+      for (const file of sourceSnapshot.files) {
+        const filePath = file.filePath;
         try {
-          const stats = statSync(filePath);
           const indexed = getIndexedSessionMeta(db, filePath);
-          if (isUnchanged(indexed, stats.mtimeMs, stats.size)) {
+          if (isUnchanged(indexed, file.mtimeMs, file.size)) {
             summary.skipped += 1;
+            unchangedFilePaths.add(filePath);
             continue;
           }
 
@@ -80,8 +94,9 @@ export async function syncSessions(options: SyncOptions = {}): Promise<SyncSumma
             kind: "replace",
             filePath,
             session: parsed.session,
-            rawFileMtime: stats.mtimeMs,
-            rawFileSize: stats.size,
+            rawFileMtime: file.mtimeMs,
+            rawFileSize: file.size,
+            pathDate: file.pathDate ?? "",
             isUpdate: Boolean(indexed),
           });
         } catch (error) {
@@ -93,7 +108,25 @@ export async function syncSessions(options: SyncOptions = {}): Promise<SyncSumma
         throw new SyncError(summary);
       }
 
-      applyOperations(db, operations, summary, Boolean(options.bestEffort));
+      if (!options.bestEffort) {
+        const afterSnapshot = collectSourceSnapshot(selector);
+        if (afterSnapshot.fingerprint !== sourceSnapshot.fingerprint) {
+          recordSyncError(summary, "(selector)", new Error("source changed during strict sync"));
+          throw new SyncError(summary);
+        }
+      }
+
+      const bestEffort = Boolean(options.bestEffort);
+      const retainedFilePaths = retainedIndexedFilePaths(unchangedFilePaths, operations);
+      summary.coverage = applyOperations(
+        db,
+        operations,
+        summary,
+        bestEffort,
+        selector,
+        sourceSnapshot,
+        retainedFilePaths,
+      );
       if (summary.errors > 0 && !options.bestEffort) {
         throw new SyncError(summary);
       }
@@ -116,39 +149,15 @@ function isUnchanged(
     && indexed.indexVersion === INDEX_VERSION;
 }
 
-function collectJsonlFiles(rootDir: string): string[] {
-  const files: string[] = [];
-  walk(rootDir, files);
-  files.sort();
-  return files;
-}
-
-function walk(currentDir: string, files: string[]): void {
-  let entries: Dirent<string>[];
-  try {
-    entries = readdirSync(currentDir, { withFileTypes: true });
-  } catch {
-    return;
-  }
-
-  for (const entry of entries) {
-    const fullPath = join(currentDir, entry.name);
-    if (entry.isDirectory()) {
-      walk(fullPath, files);
-      continue;
-    }
-    if (entry.isFile() && entry.name.endsWith(".jsonl")) {
-      files.push(fullPath);
-    }
-  }
-}
-
 function applyOperations(
   db: ReturnType<typeof openWriteDb>,
   operations: SyncOperation[],
   summary: SyncSummary,
   bestEffort: boolean,
-): void {
+  selector: Selector,
+  sourceSnapshot: { fingerprint: string; fileCount: number },
+  retainedFilePaths: Set<string>,
+): CoverageWriteSummary {
   if (bestEffort) {
     for (const operation of operations) {
       try {
@@ -158,15 +167,33 @@ function applyOperations(
         recordSyncError(summary, operation.filePath, error);
       }
     }
-    return;
+    return skippedCoverage(selector, sourceSnapshot.fingerprint, sourceSnapshot.fileCount, "best_effort");
   }
 
   let currentFilePath = "";
+  let coverage: CoverageWriteSummary | null = null;
   const tx = db.transaction(() => {
     for (const operation of operations) {
       currentFilePath = operation.filePath;
-      applyOperation(db, operation);
+      applyOperation(db, operation, selector.root);
     }
+    summary.removed += deleteSessionsForSelectorExceptFilePaths(db, selector, retainedFilePaths);
+    const indexedSessionCount = countSessionsForSelector(db, selector);
+    const record = replaceCoverage(
+      db,
+      selector,
+      sourceSnapshot.fingerprint,
+      sourceSnapshot.fileCount,
+      indexedSessionCount,
+      INDEX_VERSION,
+    );
+    coverage = {
+      written: true,
+      selector: record.selector,
+      sourceFingerprint: record.sourceFingerprint,
+      sourceFileCount: record.sourceFileCount,
+      indexedSessionCount: record.indexedSessionCount,
+    };
   });
 
   try {
@@ -179,9 +206,10 @@ function applyOperations(
   for (const operation of operations) {
     recordAppliedOperation(summary, operation);
   }
+  return coverage ?? skippedCoverage(selector, sourceSnapshot.fingerprint, sourceSnapshot.fileCount, "not_written");
 }
 
-function applyOperation(db: ReturnType<typeof openWriteDb>, operation: SyncOperation): void {
+function applyOperation(db: ReturnType<typeof openWriteDb>, operation: SyncOperation, sourceRoot?: string): void {
   if (operation.kind === "filtered") {
     deleteSessionByFilePath(db, operation.filePath);
     return;
@@ -193,7 +221,22 @@ function applyOperation(db: ReturnType<typeof openWriteDb>, operation: SyncOpera
     operation.rawFileMtime,
     operation.rawFileSize,
     INDEX_VERSION,
+    operation.pathDate,
+    sourceRoot,
   );
+}
+
+function retainedIndexedFilePaths(
+  unchangedFilePaths: Set<string>,
+  operations: SyncOperation[],
+): Set<string> {
+  const retained = new Set(unchangedFilePaths);
+  for (const operation of operations) {
+    if (operation.kind === "replace") {
+      retained.add(operation.filePath);
+    }
+  }
+  return retained;
 }
 
 function recordAppliedOperation(summary: SyncSummary, operation: SyncOperation): void {
@@ -228,4 +271,20 @@ function buildSyncErrorMessage(summary: SyncSummary): string {
     `${detail.filePath}: ${detail.message}`
   );
   return `sync failed with ${summary.errors} error(s)\n${details.join("\n")}`;
+}
+
+function skippedCoverage(
+  selector: Selector,
+  sourceFingerprint: string,
+  sourceFileCount: number,
+  reason: string,
+): CoverageWriteSummary {
+  return {
+    written: false,
+    selector,
+    sourceFingerprint,
+    sourceFileCount,
+    indexedSessionCount: 0,
+    reason,
+  };
 }

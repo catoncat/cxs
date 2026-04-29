@@ -1,15 +1,15 @@
-# cxs CLI Surface
+# cxsd CLI Surface
 
 命令默认写法：
 
 ```bash
-"${CXS_BIN:-cxs}" <subcommand> ...
+"${CXSD_BIN:-cxsd}" <subcommand> ...
 ```
 
-如果你没有把 `cxs` 放进 `PATH`，先：
+如果你没有把 `cxsd` 放进 `PATH`，先：
 
 ```bash
-export CXS_BIN=/absolute/path/to/bin/cxs
+export CXSD_BIN=/absolute/path/to/bin/cxsd
 ```
 
 没有单独的 `init` 命令。首次安装后先跑 `status --json`，根据返回的 `context.root`、`sourceInventory.cwdGroups` 和问题范围构造 selector，再跑 `sync --selector '<json>'`。
@@ -27,7 +27,7 @@ Purpose: 返回执行上下文、source inventory、index 状态和 coverage 状
 Example:
 
 ```bash
-"${CXS_BIN:-cxs}" status --json
+"${CXSD_BIN:-cxsd}" status --json
 ```
 
 Selector shapes:
@@ -57,8 +57,8 @@ Options:
 Example:
 
 ```bash
-"${CXS_BIN:-cxs}" sync --selector '{"kind":"cwd","root":"/Users/me/.codex/sessions","cwd":"/Users/me/work/foo"}' --json
-"${CXS_BIN:-cxs}" sync --selector '{"kind":"all","root":"/Users/me/.codex/sessions"}' --json 2>&1
+"${CXSD_BIN:-cxsd}" sync --selector '{"kind":"cwd","root":"/Users/me/.codex/sessions","cwd":"/Users/me/work/foo"}' --json
+"${CXSD_BIN:-cxsd}" sync --selector '{"kind":"all","root":"/Users/me/.codex/sessions"}' --json 2>&1
 ```
 
 ## find
@@ -68,8 +68,8 @@ Purpose: 搜索相关 session，返回最小必要命中。
 Example:
 
 ```bash
-"${CXS_BIN:-cxs}" find "cf tunnel" --json -n 5
-"${CXS_BIN:-cxs}" find "cf tunnel" --selector '{"kind":"cwd","root":"/Users/me/.codex/sessions","cwd":"/Users/me/work/foo"}' --json -n 5
+"${CXSD_BIN:-cxsd}" find "cf tunnel" --json -n 5
+"${CXSD_BIN:-cxsd}" find "cf tunnel" --selector '{"kind":"cwd","root":"/Users/me/.codex/sessions","cwd":"/Users/me/work/foo"}' --json -n 5
 ```
 
 ## read-range
@@ -84,8 +84,8 @@ Notes:
 Example:
 
 ```bash
-"${CXS_BIN:-cxs}" read-range <sessionUuid> --seq 12 --before 4 --after 8 --json
-"${CXS_BIN:-cxs}" read-range <sessionUuid> --query "IME" --before 4 --after 8 --json
+"${CXSD_BIN:-cxsd}" read-range <sessionUuid> --seq 12 --before 4 --after 8 --json
+"${CXSD_BIN:-cxsd}" read-range <sessionUuid> --query "IME" --before 4 --after 8 --json
 ```
 
 ## read-page
@@ -95,7 +95,7 @@ Purpose: 顺序分页读取某个 session 的消息。
 Example:
 
 ```bash
-"${CXS_BIN:-cxs}" read-page <sessionUuid> --offset 0 --limit 40 --json
+"${CXSD_BIN:-cxsd}" read-page <sessionUuid> --offset 0 --limit 40 --json
 ```
 
 ## list
@@ -105,7 +105,7 @@ Purpose: 列出已索引 session，不做全文检索。
 Example:
 
 ```bash
-"${CXS_BIN:-cxs}" list --selector '{"kind":"cwd_date_range","root":"/Users/me/.codex/sessions","cwd":"/Users/me/work/foo","fromDate":"2026-04-15","toDate":"2026-04-30"}' --sort ended --json
+"${CXSD_BIN:-cxsd}" list --selector '{"kind":"cwd_date_range","root":"/Users/me/.codex/sessions","cwd":"/Users/me/work/foo","fromDate":"2026-04-15","toDate":"2026-04-30"}' --sort ended --json
 ```
 
 ## stats
@@ -115,7 +115,7 @@ Purpose: 展示索引状态统计。
 Example:
 
 ```bash
-"${CXS_BIN:-cxs}" stats --json
+"${CXSD_BIN:-cxsd}" stats --json
 ```
 
 ## 来源

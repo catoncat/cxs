@@ -3,8 +3,9 @@ import { chmodSync, existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
-import { openReadDb } from "./db";
+import { openReadDb, openWriteDb } from "./db";
 import { SyncError, syncSessions } from "./indexer";
+import { findSessions } from "./query";
 import { syncLockPath } from "./sync-lock";
 
 const tempDirs: string[] = [];
@@ -47,16 +48,151 @@ describe("syncSessions", () => {
   test("can opt into best-effort sync and still returns failure diagnostics", async () => {
     const { dbPath, sessionsRoot, badFilePath } = createFixture();
 
-    const summary = await syncSessions({ dbPath, rootDir: sessionsRoot, bestEffort: true });
+    const summary = await syncSessions({
+      dbPath,
+      selector: { kind: "all", root: sessionsRoot },
+      bestEffort: true,
+    });
     expect(summary.added).toBe(1);
     expect(summary.errors).toBe(1);
     expect(summary.errorDetails).toHaveLength(1);
     expect(summary.errorDetails[0]?.filePath).toBe(badFilePath);
+    expect(summary.coverage.written).toBe(false);
 
     const db = openReadDb(dbPath);
     const row = db.prepare("SELECT COUNT(*) AS count FROM sessions").get() as { count: number };
+    const coverage = db.prepare("SELECT COUNT(*) AS count FROM coverage").get() as { count: number };
     db.close();
     expect(row.count).toBe(1);
+    expect(coverage.count).toBe(0);
+  });
+
+  test("strict sync writes complete coverage for the selector", async () => {
+    const base = mkdtempSync(join(tmpdir(), "cxs-indexer-coverage-"));
+    tempDirs.push(base);
+    const root = join(base, "sessions");
+    const sessionsRoot = join(root, "2026", "04", "22");
+    mkdirSync(sessionsRoot, { recursive: true });
+
+    writeFileSync(
+      join(sessionsRoot, "rollout-2026-04-22T12-00-00-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.jsonl"),
+      [
+        line("session_meta", { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", cwd: "/tmp/covered" }),
+        line("event_msg", { type: "user_message", message: "covered session" }),
+      ].join("\n"),
+    );
+
+    const dbPath = join(base, "index.sqlite");
+    const summary = await syncSessions({
+      dbPath,
+      selector: { kind: "cwd_date_range", root, cwd: "/tmp/covered", fromDate: "2026-04-22", toDate: "2026-04-22" },
+    });
+
+    expect(summary.added).toBe(1);
+    expect(summary.coverage.written).toBe(true);
+    expect(summary.coverage.selector).toMatchObject({
+      kind: "cwd_date_range",
+      cwd: "/tmp/covered",
+      fromDate: "2026-04-22",
+      toDate: "2026-04-22",
+    });
+
+    const db = openReadDb(dbPath);
+    const coverage = db.prepare("SELECT selector_kind AS kind, cwd, from_date AS fromDate, to_date AS toDate, source_file_count AS sourceFileCount FROM coverage").get() as {
+      kind: string;
+      cwd: string;
+      fromDate: string;
+      toDate: string;
+      sourceFileCount: number;
+    };
+    db.close();
+
+    expect(coverage).toEqual({
+      kind: "cwd_date_range",
+      cwd: "/tmp/covered",
+      fromDate: "2026-04-22",
+      toDate: "2026-04-22",
+      sourceFileCount: 1,
+    });
+  });
+
+  test("strict sync reconciles deleted source files before writing coverage", async () => {
+    const base = mkdtempSync(join(tmpdir(), "cxs-indexer-reconcile-"));
+    tempDirs.push(base);
+    const root = join(base, "sessions");
+    const day = join(root, "2026", "04", "22");
+    mkdirSync(day, { recursive: true });
+
+    const deletedPath = join(day, "rollout-2026-04-22T10-00-00-11111111-1111-4111-8111-111111111111.jsonl");
+    const keptPath = join(day, "rollout-2026-04-22T11-00-00-22222222-2222-4222-8222-222222222222.jsonl");
+    writeFileSync(
+      deletedPath,
+      [
+        line("session_meta", { id: "11111111-1111-4111-8111-111111111111", cwd: "/tmp/reconcile" }),
+        line("event_msg", { type: "user_message", message: "needle deleted" }),
+      ].join("\n"),
+    );
+    writeFileSync(
+      keptPath,
+      [
+        line("session_meta", { id: "22222222-2222-4222-8222-222222222222", cwd: "/tmp/reconcile" }),
+        line("event_msg", { type: "user_message", message: "needle kept" }),
+      ].join("\n"),
+    );
+
+    const dbPath = join(base, "index.sqlite");
+    const selector = { kind: "all" as const, root };
+    await syncSessions({ dbPath, selector });
+
+    rmSync(deletedPath);
+    const summary = await syncSessions({ dbPath, selector });
+
+    expect(summary.removed).toBe(1);
+    expect(summary.coverage.sourceFileCount).toBe(1);
+    expect(summary.coverage.indexedSessionCount).toBe(1);
+
+    const found = findSessions(dbPath, "needle", 10, selector);
+    expect(found.results.map((result) => result.sessionUuid)).toEqual([
+      "22222222-2222-4222-8222-222222222222",
+    ]);
+  });
+
+  test("strict sync rebuilds legacy rows missing path_date before date-range coverage", async () => {
+    const base = mkdtempSync(join(tmpdir(), "cxs-indexer-legacy-path-date-"));
+    tempDirs.push(base);
+    const root = join(base, "sessions");
+    const day = join(root, "2026", "04", "22");
+    mkdirSync(day, { recursive: true });
+
+    writeFileSync(
+      join(day, "rollout-2026-04-22T12-00-00-33333333-3333-4333-8333-333333333333.jsonl"),
+      [
+        line("session_meta", { id: "33333333-3333-4333-8333-333333333333", cwd: "/tmp/legacy-path-date" }),
+        line("event_msg", { type: "user_message", message: "dated needle" }),
+      ].join("\n"),
+    );
+
+    const dbPath = join(base, "index.sqlite");
+    const allSelector = { kind: "all" as const, root };
+    await syncSessions({ dbPath, selector: allSelector });
+
+    const writeDb = openWriteDb(dbPath);
+    writeDb
+      .prepare("UPDATE sessions SET path_date = '', index_version = ? WHERE session_uuid = ?")
+      .run("cxs-v5-session-field-weights", "33333333-3333-4333-8333-333333333333");
+    writeDb.close();
+
+    const dateSelector = { kind: "date_range" as const, root, fromDate: "2026-04-22", toDate: "2026-04-22" };
+    const summary = await syncSessions({ dbPath, selector: dateSelector });
+
+    expect(summary.updated).toBe(1);
+    expect(summary.coverage.indexedSessionCount).toBe(1);
+
+    const found = findSessions(dbPath, "dated needle", 5, dateSelector);
+    expect(found.coverage.complete).toBe(true);
+    expect(found.results.map((result) => result.sessionUuid)).toEqual([
+      "33333333-3333-4333-8333-333333333333",
+    ]);
   });
 
   test("waits for an existing sync writer lock before opening the database", async () => {
@@ -77,7 +213,7 @@ describe("syncSessions", () => {
     const dbPath = join(base, "index.sqlite");
     const blocker = await holdSyncLock(syncLockPath(dbPath), 350);
     const startedAt = Date.now();
-    const summary = await syncSessions({ dbPath, rootDir: join(base, "sessions") });
+    const summary = await syncSessions({ dbPath, selector: { kind: "all", root: join(base, "sessions") } });
     const elapsedMs = Date.now() - startedAt;
     await blocker.done;
 
@@ -107,7 +243,7 @@ describe("syncSessions", () => {
       JSON.stringify({ pid: 999_999, createdAt: new Date("2026-04-22T00:00:00.000Z").toISOString() }),
     );
 
-    const summary = await syncSessions({ dbPath, rootDir: join(base, "sessions") });
+    const summary = await syncSessions({ dbPath, selector: { kind: "all", root: join(base, "sessions") } });
 
     expect(summary.added).toBe(1);
     expect(existsSync(lockPath)).toBe(false);

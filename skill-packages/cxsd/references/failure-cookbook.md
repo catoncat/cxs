@@ -18,13 +18,13 @@
 ## Find zero results but user insists it exists
 
 ```bash
-"${CXS_BIN:-cxs}" status --json
+"${CXSD_BIN:-cxsd}" status --json
 ```
 
 如果目标范围没有 coverage，先同步明确 selector：
 
 ```bash
-"${CXS_BIN:-cxs}" sync --selector '{"kind":"cwd","root":"/Users/me/.codex/sessions","cwd":"/Users/me/work/foo"}'
+"${CXSD_BIN:-cxsd}" sync --selector '{"kind":"cwd","root":"/Users/me/.codex/sessions","cwd":"/Users/me/work/foo"}'
 ```
 
 然后查询时继续带同一个 selector。
@@ -32,7 +32,7 @@
 ## Sync non-zero with per-file errors
 
 ```bash
-"${CXS_BIN:-cxs}" sync --selector '{"kind":"all","root":"/Users/me/.codex/sessions"}' --json 2>&1
+"${CXSD_BIN:-cxsd}" sync --selector '{"kind":"all","root":"/Users/me/.codex/sessions"}' --json 2>&1
 ```
 
 处理规则：
@@ -51,7 +51,7 @@
     "code": "index_unavailable",
     "message": "index not found: ...",
     "dbPath": "...",
-    "hint": "Run `cxs sync` first ..."
+    "hint": "Run `cxsd sync` first ..."
   }
 }
 ```
@@ -59,8 +59,8 @@
 处理方式:
 
 ```bash
-"${CXS_BIN:-cxs}" status --json
-"${CXS_BIN:-cxs}" sync --selector '{"kind":"all","root":"/Users/me/.codex/sessions"}'
+"${CXSD_BIN:-cxsd}" status --json
+"${CXSD_BIN:-cxsd}" sync --selector '{"kind":"all","root":"/Users/me/.codex/sessions"}'
 ```
 
 没有单独 `init` 命令；`sync --selector` 会创建并更新索引。
@@ -76,9 +76,9 @@
 用户问“最近本项目讨论了什么”时，默认先用当前 repo 绝对路径构造 cwd selector：
 
 ```bash
-"${CXS_BIN:-cxs}" status --json
-"${CXS_BIN:-cxs}" sync --selector '{"kind":"cwd","root":"/Users/me/.codex/sessions","cwd":"/absolute/path/to/current/repo"}' --json
-"${CXS_BIN:-cxs}" list --selector '{"kind":"cwd","root":"/Users/me/.codex/sessions","cwd":"/absolute/path/to/current/repo"}' --sort ended -n 8 --json
+"${CXSD_BIN:-cxsd}" status --json
+"${CXSD_BIN:-cxsd}" sync --selector '{"kind":"cwd","root":"/Users/me/.codex/sessions","cwd":"/absolute/path/to/current/repo"}' --json
+"${CXSD_BIN:-cxsd}" list --selector '{"kind":"cwd","root":"/Users/me/.codex/sessions","cwd":"/absolute/path/to/current/repo"}' --sort ended -n 8 --json
 ```
 
 然后至少再看：

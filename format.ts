@@ -1,12 +1,12 @@
 import chalk from "chalk";
 import type {
-  CurrentSessionCandidate,
   CwdCount,
   FindResult,
   MessageRecord,
   SessionListEntry,
   SessionRecord,
   StatsSummary,
+  StatusSummary,
   SyncSummary,
 } from "./types";
 
@@ -17,7 +17,9 @@ export function printSyncSummary(summary: SyncSummary): void {
   console.log(`updated:  ${summary.updated}`);
   console.log(`skipped:  ${summary.skipped}`);
   console.log(`filtered: ${summary.filtered}`);
+  console.log(`removed:  ${summary.removed}`);
   console.log(`errors:   ${summary.errors}`);
+  console.log(`coverage: ${summary.coverage.written ? "written" : `not written (${summary.coverage.reason ?? "unknown"})`}`);
   if (summary.errorDetails.length > 0) {
     console.log();
     console.log(chalk.bold.red("sync errors"));
@@ -107,23 +109,6 @@ export function printSessionList(results: SessionListEntry[]): void {
   }
 }
 
-export function printCurrentSessions(cwd: string, results: CurrentSessionCandidate[]): void {
-  console.log(chalk.bold.cyan("cxs current"));
-  console.log(chalk.gray(`cwd=${cwd || "-"}`));
-  if (results.length === 0) {
-    console.log(chalk.yellow("没有匹配的 session"));
-    return;
-  }
-
-  for (const [index, entry] of results.entries()) {
-    console.log();
-    console.log(chalk.bold(`[${index + 1}] ${entry.title || "(no title)"}`));
-    console.log(chalk.gray(`${entry.cwd || "-"} · updated_at_ms=${entry.updatedAtMs}`));
-    console.log(chalk.gray(`uuid=${entry.sessionUuid}`));
-    console.log(chalk.gray(`file=${entry.filePath}`));
-  }
-}
-
 export function printStats(stats: StatsSummary): void {
   console.log(chalk.bold.cyan(`cxs stats`));
   console.log(`sessions:        ${stats.sessionCount}`);
@@ -134,12 +119,33 @@ export function printStats(stats: StatsSummary): void {
   console.log(`index_version:   ${stats.indexVersion}`);
   console.log(`db_path:         ${stats.dbPath}`);
   console.log(`db_size_bytes:   ${stats.dbSizeBytes}`);
+  console.log(`coverage_count:  ${stats.coverage.length}`);
   if (stats.topCwds.length > 0) {
     console.log();
     console.log(chalk.bold("top cwds"));
     const width = Math.max(...stats.topCwds.map((row: CwdCount) => row.cwd.length));
     for (const row of stats.topCwds) {
       console.log(`  ${row.cwd.padEnd(width)}  ${row.count}`);
+    }
+  }
+}
+
+export function printStatus(status: StatusSummary): void {
+  console.log(chalk.bold.cyan("cxs status"));
+  console.log(`cwd:            ${status.context.cwd}`);
+  console.log(`root:           ${status.context.root}`);
+  console.log(`db_path:        ${status.context.dbPath}`);
+  console.log(`source_files:   ${status.sourceInventory.totalFiles}`);
+  console.log(`source_dates:   ${status.sourceInventory.pathDateRange.from ?? "-"}..${status.sourceInventory.pathDateRange.to ?? "-"}`);
+  console.log(`index_exists:   ${status.index.exists}`);
+  console.log(`sessions:       ${status.index.sessionCount}`);
+  console.log(`messages:       ${status.index.messageCount}`);
+  console.log(`coverage_count: ${status.coverage.length}`);
+  if (status.sourceInventory.cwdGroups.length > 0) {
+    console.log();
+    console.log(chalk.bold("source cwd groups"));
+    for (const group of status.sourceInventory.cwdGroups.slice(0, 10)) {
+      console.log(`  ${group.fileCount.toString().padStart(4)}  ${group.cwd}`);
     }
   }
 }

@@ -1,7 +1,6 @@
-import { createReadStream, existsSync, readFileSync } from "node:fs";
+import { createReadStream } from "node:fs";
 import { basename } from "node:path";
 import { createInterface } from "node:readline";
-import { CODEX_TITLE_INDEX_PATH } from "./env";
 import type { ParsedMessage, ParseSessionResult } from "./types";
 
 const INTERNAL_MARKERS = [
@@ -87,7 +86,7 @@ export async function parseCodexSession(filePath: string): Promise<ParseSessionR
   if (filteredMessageCount > 0 && eventMessages.length === 0) return { kind: "filtered" };
   if (!sessionUuid || eventMessages.length === 0) return { kind: "skipped" };
 
-  const title = loadCodexTitle(sessionUuid) ?? firstUserMessage(eventMessages) ?? "(no title)";
+  const title = firstUserMessage(eventMessages) ?? "(no title)";
   const timestamps = eventMessages.map((message) => message.timestamp).sort();
 
   return {
@@ -182,29 +181,4 @@ function looksInternal(text: string): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-let titleIndex: Map<string, string> | null = null;
-
-function loadCodexTitle(sessionUuid: string): string | null {
-  if (!titleIndex) {
-    titleIndex = new Map();
-    if (existsSync(CODEX_TITLE_INDEX_PATH)) {
-      const raw = readFileSync(CODEX_TITLE_INDEX_PATH, "utf8");
-      for (const line of raw.split("\n")) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        try {
-          const record = JSON.parse(trimmed) as { id?: string; thread_name?: string };
-          if (record.id && record.thread_name) {
-            titleIndex.set(record.id, record.thread_name);
-          }
-        } catch {
-          continue;
-        }
-      }
-    }
-  }
-
-  return titleIndex.get(sessionUuid) ?? null;
 }
