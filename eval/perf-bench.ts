@@ -42,6 +42,7 @@ const BENCH_QUERIES: string[] = [
 
 const RUNS_PER_QUERY = 5; // 第 1 次作为 warmup,统计后 4 次
 const ROOT = resolve(import.meta.dirname, "..");
+const CLI_ENTRY = resolve(ROOT, "src", "cli.ts");
 const OUT_BASE = resolve(ROOT, "data", "cxs-perf");
 
 interface CliArgs {
@@ -150,7 +151,7 @@ if (!args.jsonOnly) {
 }
 
 // 1. sync
-const syncRun = await runOrThrow([process.execPath, "--import", "tsx", "cli.ts", "sync", "--db", args.db, "--root", args.root, "--json"]);
+const syncRun = await runOrThrow([process.execPath, "--import", "tsx", CLI_ENTRY, "sync", "--db", args.db, "--root", args.root, "--json"]);
 const syncMs = syncRun.ms;
 let sessionCount = 0;
 try {
@@ -165,7 +166,7 @@ const perQuery: PerQueryRecord[] = [];
 for (const q of BENCH_QUERIES) {
   const samplesAll: number[] = [];
   for (let i = 0; i < RUNS_PER_QUERY; i++) {
-    const r = await runOrThrow([process.execPath, "--import", "tsx", "cli.ts", "find", q, "--db", args.db, "--limit", "10", "--json"]);
+    const r = await runOrThrow([process.execPath, "--import", "tsx", CLI_ENTRY, "find", q, "--db", args.db, "--limit", "10", "--json"]);
     samplesAll.push(r.ms);
   }
   // 丢弃首次 warmup
@@ -181,7 +182,7 @@ for (const q of BENCH_QUERIES) {
 }
 
 // 3. stats -> dbSizeBytes
-const statsRun = await runOrThrow([process.execPath, "--import", "tsx", "cli.ts", "stats", "--db", args.db, "--json"]);
+const statsRun = await runOrThrow([process.execPath, "--import", "tsx", CLI_ENTRY, "stats", "--db", args.db, "--json"]);
 let dbSizeBytes = 0;
 try {
   const parsed = JSON.parse(statsRun.stdout) as { dbSizeBytes?: number; sessionCount?: number };

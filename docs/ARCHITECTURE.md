@@ -24,13 +24,13 @@
 
 ### 1. 同步
 
-[status.ts](/Users/envvar/work/repos/cxs/status.ts) 返回执行上下文、source inventory、index 状态与 coverage 状态。它可以扫描 raw sessions 的 metadata，但不回答内容问题。
+[status.ts](/Users/envvar/work/repos/cxs/src/status.ts) 返回执行上下文、source inventory、index 状态与 coverage 状态。它可以扫描 raw sessions 的 metadata，但不回答内容问题。
 
-[indexer.ts](/Users/envvar/work/repos/cxs/indexer.ts) 按显式 selector 扫描 `~/.codex/sessions` 下的 JSONL session 文件，按文件 `mtime`、`size` 和 `indexVersion` 做增量判断。
+[indexer.ts](/Users/envvar/work/repos/cxs/src/indexer.ts) 按显式 selector 扫描 `~/.codex/sessions` 下的 JSONL session 文件，按文件 `mtime`、`size` 和 `indexVersion` 做增量判断。
 
 strict sync 在写 complete coverage 前会 reconcile selector 范围：当前 source snapshot 中不存在、被过滤或不能解析成 session 的旧 index row 会被删除。
 
-[parser.ts](/Users/envvar/work/repos/cxs/parser.ts) 只抽取 `event_msg` 里的：
+[parser.ts](/Users/envvar/work/repos/cxs/src/parser.ts) 只抽取 `event_msg` 里的：
 
 - `user_message`
 - `agent_message`
@@ -39,7 +39,7 @@ strict sync 在写 complete coverage 前会 reconcile selector 范围：当前 s
 
 ### 2. 持久化
 
-[db.ts](/Users/envvar/work/repos/cxs/db.ts) 维护两层主数据：
+[db.ts](/Users/envvar/work/repos/cxs/src/db.ts) 维护两层主数据：
 
 - `sessions`
 - `messages`
@@ -64,7 +64,7 @@ SQLite 访问层当前已经按 reader / writer 分流：
 
 ### 3. 查询
 
-[query.ts](/Users/envvar/work/repos/cxs/query.ts) 提供三类读取：
+[query.ts](/Users/envvar/work/repos/cxs/src/query.ts) 提供三类读取：
 
 - `findSessions()`
 - `getMessageRange()`
@@ -75,13 +75,13 @@ SQLite 访问层当前已经按 reader / writer 分流：
 1. 从 `messages_fts` 做原文证据召回
 2. 从 `sessions_fts` 做 session-level 字段召回
 3. 极少数零 token CJK query 在 message 侧回退到 LIKE
-4. 把 raw hits 合并后交给 [ranking.ts](/Users/envvar/work/repos/cxs/ranking.ts) 做 session 级排序
+4. 把 raw hits 合并后交给 [ranking.ts](/Users/envvar/work/repos/cxs/src/ranking.ts) 做 session 级排序
 
 `messages` 仍然只代表可回读的真实 transcript。session-level 命中会以 `matchSource = "session"` 返回；如果没有真实 message anchor，`matchSeq` 为 `null`，CLI 会建议先 `read-page`。
 
 ### 4. 排序
 
-[ranking.ts](/Users/envvar/work/repos/cxs/ranking.ts) 当前是 heuristic rerank，不是独立的 resource-level reranker。
+[ranking.ts](/Users/envvar/work/repos/cxs/src/ranking.ts) 当前是 heuristic rerank，不是独立的 resource-level reranker。
 
 主要信号包括：
 

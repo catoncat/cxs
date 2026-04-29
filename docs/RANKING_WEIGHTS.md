@@ -1,10 +1,10 @@
 # cxs ranking 权重说明
 
-本文是 [ranking.ts](../ranking.ts) 与 [query.ts](../query.ts) 中所有 magic constant 的“为什么是这个值”说明，受众是未来要调权重的维护者(人或 agent)。
+本文是 [ranking.ts](../src/ranking.ts) 与 [query.ts](../src/query.ts) 中所有 magic constant 的“为什么是这个值”说明，受众是未来要调权重的维护者(人或 agent)。
 
 每个权重都需要在三个层次的相对量级里活下去：
 
-1. **bm25 row-level 分数**(从 `query.ts:289` 或 `messages_fts` 的 `bm25(...)` 来)。被 `-row.score` 翻成正向后，单行通常落在 `2 ~ 15`。
+1. **bm25 row-level 分数**(从 `src/query.ts:289` 或 `messages_fts` 的 `bm25(...)` 来)。被 `-row.score` 翻成正向后，单行通常落在 `2 ~ 15`。
 2. **row-level signal bonus** (`scoreRow`)。叠加在 bm25 之上,常见区间 `0 ~ 16`。
 3. **session-level metadata bonus** (`scoreSession`)。是一个 session 维度的“补强”加层,常见区间 `0 ~ 80`。
 
@@ -14,7 +14,7 @@
 
 ## SQL 列权重: `bm25(sessions_fts, 8.0, 3.0, 4.0, 1.2)`
 
-位置: [query.ts:289](../query.ts)。
+位置: [query.ts:289](../src/query.ts)。
 
 `sessions_fts` 的索引列顺序固定为 `(title, summary_text, compact_text, reasoning_summary_text, session_uuid)`,`session_uuid` 是 UNINDEXED,所以 bm25 的四个权重对应前四列。SQLite FTS5 的 bm25 输出是 *负数*,**值越小越好**;权重越大表示该列匹配应该被放大。
 
@@ -41,7 +41,7 @@
 
 ## scoreRow: 单 row 信号
 
-位置: [ranking.ts:166-178](../ranking.ts)。
+位置: [ranking.ts:166-178](../src/ranking.ts)。
 
 ```
 normalizedBm25
@@ -89,7 +89,7 @@ user-authored content 比 agent 输出多 2 分。
 
 ## scoreSession: session 级补强
 
-位置: [ranking.ts:186-197](../ranking.ts)。
+位置: [ranking.ts:186-197](../src/ranking.ts)。
 
 ```
 bestRowSignalScore
@@ -160,7 +160,7 @@ session 内总命中行数,clamp 到 6,乘 1.5(满分 9)。
 
 ## recencyDecay: 时间衰减
 
-位置: [ranking.ts:205-210](../ranking.ts)。
+位置: [ranking.ts:205-210](../src/ranking.ts)。
 
 ```
 max(0, 18 - days_since_ended * 0.15)
@@ -197,7 +197,7 @@ max(0, 18 - days_since_ended * 0.15)
 
 ## shouldUseDisplayRow: message 优先于 session
 
-位置: [ranking.ts:148-157](../ranking.ts)。
+位置: [ranking.ts:148-157](../src/ranking.ts)。
 
 ```ts
 if (candidate.matchSource === "message" && current.matchSource !== "message") return true;

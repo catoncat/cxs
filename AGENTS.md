@@ -33,16 +33,16 @@
 
 ## 代码地图
 
-- [cli.ts](/Users/envvar/work/repos/cxs/cli.ts): CLI 命令面
-- [indexer.ts](/Users/envvar/work/repos/cxs/indexer.ts): sync 与索引更新
-- [parser.ts](/Users/envvar/work/repos/cxs/parser.ts): Codex JSONL 解析与 `summary_text` 生成
-- [db.ts](/Users/envvar/work/repos/cxs/db.ts): SQLite schema、会话/消息存取
-- [query.ts](/Users/envvar/work/repos/cxs/query.ts): find / list / read-range / read-page 查询编排
-- [status.ts](/Users/envvar/work/repos/cxs/status.ts): status 输出编排
-- [selector.ts](/Users/envvar/work/repos/cxs/selector.ts): selector 解析与覆盖蕴含规则
-- [source-inventory.ts](/Users/envvar/work/repos/cxs/source-inventory.ts): raw sessions metadata inventory
-- [types.ts](/Users/envvar/work/repos/cxs/types.ts): CLI JSON contract 与核心类型
-- [ranking.ts](/Users/envvar/work/repos/cxs/ranking.ts): session heuristic rerank
+- [cli.ts](/Users/envvar/work/repos/cxs/src/cli.ts): CLI 命令面
+- [indexer.ts](/Users/envvar/work/repos/cxs/src/indexer.ts): sync 与索引更新
+- [parser.ts](/Users/envvar/work/repos/cxs/src/parser.ts): Codex JSONL 解析与 `summary_text` 生成
+- [db.ts](/Users/envvar/work/repos/cxs/src/db.ts): SQLite schema、会话/消息存取
+- [query.ts](/Users/envvar/work/repos/cxs/src/query.ts): find / list / read-range / read-page 查询编排
+- [status.ts](/Users/envvar/work/repos/cxs/src/status.ts): status 输出编排
+- [selector.ts](/Users/envvar/work/repos/cxs/src/selector.ts): selector 解析与覆盖蕴含规则
+- [source-inventory.ts](/Users/envvar/work/repos/cxs/src/source-inventory.ts): raw sessions metadata inventory
+- [types.ts](/Users/envvar/work/repos/cxs/src/types.ts): CLI JSON contract 与核心类型
+- [ranking.ts](/Users/envvar/work/repos/cxs/src/ranking.ts): session heuristic rerank
 - [eval/](/Users/envvar/work/repos/cxs/eval): manual eval、batch compare
 
 ## 文档规则
@@ -83,7 +83,7 @@ npx skills add catoncat/cxs --full-depth --skill cxs -g -a codex -y
 本机约定：
 
 - dev bin: `/Users/envvar/.local/bin/cxsd`
-- dev bin 指向：`/Users/envvar/work/repos/cxs/cli.ts`
+- dev bin 指向：`/Users/envvar/work/repos/cxs/src/cli.ts`
 - global dev skill: `/Users/envvar/.agents/skills/cxsd -> /Users/envvar/work/repos/cxs/skill-packages/cxsd`
 - Claude exposure: `/Users/envvar/.claude/skills/cxsd -> /Users/envvar/.agents/skills/cxsd`
 

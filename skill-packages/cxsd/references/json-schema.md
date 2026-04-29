@@ -226,6 +226,6 @@ CoverageRecord & {
 
 ## 来源
 
-- 仓库内 `types.ts`
-- 仓库内 `cli.ts`
-- 仓库内 `query.ts`
+- 仓库内 `src/types.ts`
+- 仓库内 `src/cli.ts`
+- 仓库内 `src/query.ts`

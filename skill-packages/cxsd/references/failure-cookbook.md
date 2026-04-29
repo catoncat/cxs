@@ -105,8 +105,8 @@
 
 source of truth 永远是：
 
-- 仓库内 `types.ts`
-- 仓库内 `cli.ts`
+- 仓库内 `src/types.ts`
+- 仓库内 `src/cli.ts`
 
 如果字段、命令、flag 变了：
 
@@ -116,7 +116,7 @@ source of truth 永远是：
 
 ## 来源
 
-- 仓库内 `cli.ts`
-- 仓库内 `types.ts`
-- 仓库内 `env.ts`
-- 仓库内 `query.ts`
+- 仓库内 `src/cli.ts`
+- 仓库内 `src/types.ts`
+- 仓库内 `src/env.ts`
+- 仓库内 `src/query.ts`

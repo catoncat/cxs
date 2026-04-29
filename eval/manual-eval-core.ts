@@ -1,4 +1,4 @@
-import type { FindResult } from "../types";
+import type { FindResult } from "../src/types";
 
 export interface ManualQuery {
   id: string;

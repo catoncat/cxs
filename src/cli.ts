@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import packageJson from "./package.json" with { type: "json" };
+import packageJson from "../package.json" with { type: "json" };
 import {
   DEFAULT_DB_PATH,
   migrateLegacyCacheDirIfNeeded,

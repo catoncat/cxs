@@ -39,11 +39,11 @@
     "linux"
   ],
   "scripts": {
-    "build": "esbuild cli.ts --bundle --platform=node --target=node22 --format=esm --external:better-sqlite3 --external:chalk --external:commander --outfile=dist/cli.js && node scripts/post-build.mjs",
+    "build": "esbuild src/cli.ts --bundle --platform=node --target=node22 --format=esm --external:better-sqlite3 --external:chalk --external:commander --outfile=dist/cli.js && node scripts/post-build.mjs",
     "prepublishOnly": "npm run build",
     "test": "vitest run",
     "check": "tsc --noEmit && vitest run",
-    "cxs": "tsx ./cli.ts",
+    "cxs": "tsx ./src/cli.ts",
     "eval:manual": "tsx ./eval/run-manual-eval.ts",
     "eval:compare": "tsx ./eval/compare-eval-batches.ts",
     "eval:perf": "tsx ./eval/perf-bench.ts"

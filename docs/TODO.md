@@ -37,6 +37,6 @@
 
 ## P2: 真正接通 broad / exact query 分流
 
-当前 [ranking.ts](/Users/envvar/work/repos/cxs/ranking.ts) 还保留 `classifyQueryProfile()`，但 scoring 没有显式按 broad / exact 分权。
+当前 [ranking.ts](/Users/envvar/work/repos/cxs/src/ranking.ts) 还保留 `classifyQueryProfile()`，但 scoring 没有显式按 broad / exact 分权。
 
 这件事仍然值得做，但应放在更强 eval 之后。

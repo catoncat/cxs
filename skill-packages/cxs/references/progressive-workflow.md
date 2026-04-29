@@ -77,5 +77,5 @@
 ## 来源
 
 - 仓库内 `README.md`
-- 仓库内 `query.ts`
-- 仓库内 `types.ts`
+- 仓库内 `src/query.ts`
+- 仓库内 `src/types.ts`

@@ -120,6 +120,6 @@ Example:
 
 ## 来源
 
-- 仓库内 `cli.ts`
-- 仓库内 `env.ts`
+- 仓库内 `src/cli.ts`
+- 仓库内 `src/env.ts`
 - 仓库内 `README.md`

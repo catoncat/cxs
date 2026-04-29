@@ -10,6 +10,13 @@
     "skipLibCheck": true,
     "resolveJsonModule": true
   },
-  "include": ["**/*.ts"],
-  "exclude": ["node_modules", "dist", "data"]
+  "include": [
+    "src/**/*.ts",
+    "eval/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "data"
+  ]
 }

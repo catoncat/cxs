@@ -57,7 +57,7 @@
 
 当前现状：
 
-- [ranking.ts](/Users/envvar/work/repos/cxs/ranking.ts) 仍保留 `classifyQueryProfile()`
+- [ranking.ts](/Users/envvar/work/repos/cxs/src/ranking.ts) 仍保留 `classifyQueryProfile()`
 - 但当前 scoring 没有按 `kind` 做显式不同权重
 
 这意味着：

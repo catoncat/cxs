@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { evaluateManualQuery } from "./manual-eval-core";
-import type { FindResult } from "../types";
+import type { FindResult } from "../src/types";
 
 describe("evaluateManualQuery", () => {
   test("requires every configured predicate to match somewhere in top-k", () => {

@@ -10,14 +10,14 @@
 
 本次审查基于当前工作区状态，而不是 clean `main`。审查覆盖：
 
-- `cli.ts`
-- `parser.ts`
-- `db.ts`
-- `query.ts`
-- `ranking.ts`
-- `indexer.ts`
-- `sync-lock.ts`
-- `types.ts`
+- `src/cli.ts`
+- `src/parser.ts`
+- `src/db.ts`
+- `src/query.ts`
+- `src/ranking.ts`
+- `src/indexer.ts`
+- `src/sync-lock.ts`
+- `src/types.ts`
 - 测试文件与项目文档
 
 验证命令：
@@ -49,12 +49,12 @@ sync -> find -> read-range/read-page
 
 当前代码地图比较清晰：
 
-- `cli.ts`：CLI 命令面
-- `indexer.ts`：sync 与索引更新
-- `parser.ts`：Codex JSONL 解析与 session summary 生成
-- `db.ts`：SQLite schema、session/message 存取、FTS 表维护
-- `query.ts`：find/list/read-range/read-page/current 查询编排
-- `ranking.ts`：session 级 heuristic rerank
+- `src/cli.ts`：CLI 命令面
+- `src/indexer.ts`：sync 与索引更新
+- `src/parser.ts`：Codex JSONL 解析与 session summary 生成
+- `src/db.ts`：SQLite schema、session/message 存取、FTS 表维护
+- `src/query.ts`：find/list/read-range/read-page/current 查询编排
+- `src/ranking.ts`：session 级 heuristic rerank
 - `eval/`：manual eval 与 batch compare
 
 这对一个本地 CLI 来说是健康结构。
@@ -132,7 +132,7 @@ try {
 
 > 状态：已在 commit `187c5d9` 部分缓解 — 引入 `tryRemoveStaleLock` 在删除前二次比对 `pid + createdAt`。但这是 best-effort,**不是原子 TOCTOU 修复**：在二次读取与 path-based `rmSync` 之间仍有残余 race 窗口,另一个进程可能在该窗口内删除并替换 lock,导致当前进程仍可能 `rmSync` 别人的新 lock。Node 层没有 inode-pinned unlink,要做真正原子需引入 OS-level flock(native bindings)。
 >
-> 工程决策：cxs 的 sync 是低并发异常路径,残余 race 窗口极窄,接受 best-effort 表述并在 `sync-lock.ts:tryRemoveStaleLock` 注释里明确标注。如未来观察到锁损坏,再考虑引入 flock 或换 rename-based 抓取。
+> 工程决策：cxs 的 sync 是低并发异常路径,残余 race 窗口极窄,接受 best-effort 表述并在 `src/sync-lock.ts:tryRemoveStaleLock` 注释里明确标注。如未来观察到锁损坏,再考虑引入 flock 或换 rename-based 抓取。
 
 原文（保留作为背景）：当前逻辑遇到已有 lock 后会读 lock info，判断 pid 不存在就删除 lock 文件。这里有一个竞态：读到 stale lock 之后、删除之前，另一个进程可能已经创建了新 lock；当前进程可能误删别人的新 lock。
 
