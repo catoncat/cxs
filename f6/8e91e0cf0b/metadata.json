@@ -1,0 +1,43 @@
+{
+  "cli_version": "0.5.5",
+  "checkpoint_id": "f68e91e0cf0b",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 9,
+  "files_touched": [
+    "AGENTS.md",
+    "README.md",
+    "cli.test.ts",
+    "cli.ts",
+    "db.ts",
+    "docs/ARCHITECTURE.md",
+    "env.ts",
+    "format.ts",
+    "indexer.test.ts",
+    "indexer.ts",
+    "parser.ts",
+    "query.test.ts",
+    "query.ts",
+    "skill-packages/cxs/SKILL.md",
+    "skill-packages/cxs/references/cli-surface.md",
+    "skill-packages/cxs/references/failure-cookbook.md",
+    "skill-packages/cxs/references/json-schema.md",
+    "skill-packages/cxs/references/progressive-workflow.md",
+    "types.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/f6/8e91e0cf0b/0/metadata.json",
+      "transcript": "/f6/8e91e0cf0b/0/full.jsonl",
+      "content_hash": "/f6/8e91e0cf0b/0/content_hash.txt",
+      "prompt": "/f6/8e91e0cf0b/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 257761,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2857984,
+    "output_tokens": 27225,
+    "api_call_count": 38
+  }
+}

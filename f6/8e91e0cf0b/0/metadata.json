@@ -1,0 +1,172 @@
+{
+  "cli_version": "0.5.5",
+  "checkpoint_id": "f68e91e0cf0b",
+  "session_id": "1e8bff8d-0d92-401f-840c-7e7e3de3d8ed",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-29T02:27:10.042685Z",
+  "branch": "main",
+  "checkpoints_count": 9,
+  "files_touched": [
+    "AGENTS.md",
+    "README.md",
+    "cli.test.ts",
+    "cli.ts",
+    "db.ts",
+    "docs/ARCHITECTURE.md",
+    "env.ts",
+    "format.ts",
+    "indexer.test.ts",
+    "indexer.ts",
+    "parser.ts",
+    "query.test.ts",
+    "query.ts",
+    "skill-packages/cxs/SKILL.md",
+    "skill-packages/cxs/references/cli-surface.md",
+    "skill-packages/cxs/references/failure-cookbook.md",
+    "skill-packages/cxs/references/json-schema.md",
+    "skill-packages/cxs/references/progressive-workflow.md",
+    "types.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-7",
+  "turn_id": "f829321d1c8d",
+  "token_usage": {
+    "input_tokens": 257761,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2857984,
+    "output_tokens": 27225,
+    "api_call_count": 38
+  },
+  "session_metrics": {
+    "turn_count": 9
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-29T02:27:10.028532Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 321,
+    "human_removed": 395,
+    "total_committed": 0,
+    "total_lines_changed": 716,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 2432,
+      "user_lines_removed": 531,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "AGENTS.md": 38,
+        "README.md": 29,
+        "cli.test.ts": 101,
+        "cli.ts": 43,
+        "db.ts": 202,
+        "docs/ARCHITECTURE.md": 11,
+        "docs/INDEX_COVERAGE_DESIGN.md": 313,
+        "format.ts": 23,
+        "indexer.test.ts": 59,
+        "indexer.ts": 73,
+        "parser.ts": 2,
+        "query.test.ts": 10,
+        "query.ts": 86,
+        "selector.test.ts": 39,
+        "selector.ts": 120,
+        "skill-packages/cxs/SKILL.md": 11,
+        "skill-packages/cxs/references/cli-surface.md": 20,
+        "skill-packages/cxs/references/failure-cookbook.md": 34,
+        "skill-packages/cxs/references/json-schema.md": 85,
+        "skill-packages/cxs/references/progressive-workflow.md": 15,
+        "skill-packages/cxsd/SKILL.md": 69,
+        "skill-packages/cxsd/references/advanced-queries.md": 86,
+        "skill-packages/cxsd/references/cli-surface.md": 123,
+        "skill-packages/cxsd/references/failure-cookbook.md": 122,
+        "skill-packages/cxsd/references/json-schema.md": 229,
+        "skill-packages/cxsd/references/progressive-workflow.md": 81,
+        "source-inventory.test.ts": 74,
+        "source-inventory.ts": 166,
+        "status.ts": 69,
+        "types.ts": 99
+      },
+      "user_removed_per_file": {
+        "AGENTS.md": 6,
+        "README.md": 17,
+        "cli.test.ts": 74,
+        "cli.ts": 35,
+        "db.ts": 3,
+        "docs/ARCHITECTURE.md": 3,
+        "env.ts": 2,
+        "format.ts": 18,
+        "indexer.test.ts": 3,
+        "indexer.ts": 43,
+        "parser.ts": 28,
+        "query.test.ts": 88,
+        "query.ts": 87,
+        "skill-packages/cxs/SKILL.md": 11,
+        "skill-packages/cxs/references/cli-surface.md": 28,
+        "skill-packages/cxs/references/failure-cookbook.md": 47,
+        "skill-packages/cxs/references/progressive-workflow.md": 30,
+        "types.ts": 8
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2432,
+      "agent_lines_removed": 531
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2432,
+      "agent_lines_removed": 531
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2432,
+      "agent_lines_removed": 531
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2432,
+      "agent_lines_removed": 531
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2432,
+      "agent_lines_removed": 531
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2432,
+      "agent_lines_removed": 531
+    },
+    {
+      "checkpoint_number": 8,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2432,
+      "agent_lines_removed": 531
+    },
+    {
+      "checkpoint_number": 9,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2432,
+      "agent_lines_removed": 531
+    }
+  ]
+}
