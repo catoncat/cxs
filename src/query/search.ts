@@ -269,8 +269,19 @@ function addExcludedSessions(
   alias: string,
   excludedSessions: string[] | undefined,
 ): void {
-  const unique = [...new Set((excludedSessions ?? []).map((value) => value.trim()).filter(Boolean))];
-  if (unique.length === 0) return;
+  if (!excludedSessions || excludedSessions.length === 0) return;
+
+  // OPTIMIZATION: Use a single loop to populate the Set.
+  // Avoids intermediate array allocations from map() and filter().
+  const seen = new Set<string>();
+  for (const value of excludedSessions) {
+    const trimmed = value.trim();
+    if (trimmed) seen.add(trimmed);
+  }
+
+  if (seen.size === 0) return;
+
+  const unique = [...seen];
   conditions.push(`${alias}.session_uuid NOT IN (${unique.map(() => "?").join(", ")})`);
   params.push(...unique);
 }
