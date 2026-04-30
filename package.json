@@ -46,7 +46,8 @@
     "cxs": "tsx ./src/cli.ts",
     "eval:manual": "tsx ./eval/run-manual-eval.ts",
     "eval:compare": "tsx ./eval/compare-eval-batches.ts",
-    "eval:perf": "tsx ./eval/perf-bench.ts"
+    "eval:perf": "tsx ./eval/perf-bench.ts",
+    "eval:dogfood": "tsx ./eval/run-dogfood-eval.ts"
   },
   "dependencies": {
     "better-sqlite3": "^12.9.0",

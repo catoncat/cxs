@@ -17,16 +17,23 @@
   - `title_or_summary`
   - `cwd`
   - `snippet`
+- [eval/run-dogfood-eval.ts](/Users/envvar/work/repos/cxs/eval/run-dogfood-eval.ts) 已提供本机 dogfood golden runner：
+  - 读取 ignored JSONL golden 文件
+  - 检查 expected session / cwd / matchSource / context key phrase
+  - `hard` 失败会以非零退出阻断本机 gate
+  - `candidate` 失败只报告，不阻断
 
 建议动作：
 
 - 扩充真实 query 集
+- 继续用 dev-only `~/.agents/skills/cxs-dogfood` 手动策展本机 dogfood golden；不要把私有样本放进发行 skill package
 - 增加更强断言：
   - session 是否对
   - `read-range` 是否给出有用上下文
   - 是否命中关键 message / key phrase
 - 继续复用现有：
   - `npm run eval:manual`
+  - `npm run eval:dogfood -- <goldens.local.jsonl>`
   - `npm run eval:compare -- <before> <after>`
 
 ### P1: 已补 session-level 字段召回

@@ -95,6 +95,17 @@ npx skills add catoncat/cxs --full-depth --skill cxs -g -a codex -y
 - 全局 `cxs` 通过 `npx skills add` 更新；全局 `cxsd` 通过 symlink 跟随本地 repo
 - 若 `cxs` 与 `cxsd` 行为不一致，先判断是“线上尚未发布”还是“dev skill 漂移”，不要直接覆盖任一通道
 
+## Dogfood eval 边界
+
+Dogfood golden 是开发者本机的真实历史检索验收集，不是普通用户功能。
+
+- 通用 runner / schema 可以维护在 `eval/`，例如 `npm run eval:dogfood -- <goldens.local.jsonl>`
+- 私有 golden 默认放在 ignored 路径：`data/cxs-dogfood/goldens.local.jsonl`
+- 添加 / promote dogfood golden 只能在用户显式触发 dev-only skill 时进行
+- 本机 dev-only skill 路径：`~/.agents/skills/cxs-dogfood`
+- 不要把 dogfood capture 流程或私有 golden 放进 `skill-packages/cxs` / `skill-packages/cxsd`
+- 普通代码实现任务可以运行已有 dogfood gate，但不能自行新增 golden，也不能自行把 `candidate` promote 为 `hard`
+
 ## 默认验证
 
 涉及实现或文档真相变更时，至少做与改动直接相关的验证：
