@@ -86,7 +86,13 @@ function scoreSnippetWindow(lowerSnippet: string, termLowers: string[]): number 
 }
 
 function uniqueNonEmpty(values: string[]): string[] {
-  return [...new Set(values.filter(Boolean))];
+  // OPTIMIZATION: Use a single loop to populate the Set.
+  // Avoids intermediate array allocations from filter() operation.
+  const seen = new Set<string>();
+  for (const value of values) {
+    if (value) seen.add(value);
+  }
+  return [...seen];
 }
 
 function wrapAnyOccurrences(haystack: string, needleLowers: string[]): string {

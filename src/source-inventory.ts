@@ -136,11 +136,19 @@ function buildCwdGroups(files: SourceFileMeta[]): SourceInventoryCwdGroup[] {
 }
 
 function dateRange(values: Array<string | null>): DateRange {
-  const dates = values.filter((value): value is string => Boolean(value)).sort();
-  return {
-    from: dates[0] ?? null,
-    to: dates[dates.length - 1] ?? null,
-  };
+  // OPTIMIZATION: Track min/max in a single O(N) pass.
+  // Avoids O(N) array allocation from filter() and O(N log N) overhead from sort()
+  // for a pure aggregation over ISO 8601 date strings.
+  let from: string | null = null;
+  let to: string | null = null;
+
+  for (const value of values) {
+    if (!value) continue;
+    if (!from || value < from) from = value;
+    if (!to || value > to) to = value;
+  }
+
+  return { from, to };
 }
 
 function fingerprintFiles(root: string, files: SourceFileMeta[]): string {
