@@ -107,6 +107,16 @@ export interface CoverageStatus {
   coveringSelectors: CoverageRecord[];
 }
 
+export interface RequestedCoverageStatus {
+  requested: Selector;
+  complete: boolean;
+  freshness: "fresh" | "stale" | "missing";
+  sourceFingerprint: string;
+  sourceFileCount: number;
+  coveringSelectors: CoverageInventoryStatus[];
+  recommendedAction: "query" | "sync";
+}
+
 export interface SessionRecord {
   sessionUuid: string;
   filePath: string;
@@ -172,6 +182,7 @@ export interface SessionListEntry {
 }
 
 export type SessionListSort = "ended" | "started" | "messages";
+export type FindSort = "relevance" | "ended" | "started";
 
 export interface SessionListQuery {
   cwd?: string;
@@ -217,4 +228,5 @@ export interface StatusSummary {
     lastSyncAt: string | null;
   };
   coverage: CoverageInventoryStatus[];
+  requestedCoverage?: RequestedCoverageStatus;
 }

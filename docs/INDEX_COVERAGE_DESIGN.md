@@ -162,6 +162,7 @@ Coverage 可以蕴含更窄 selector。
 - 返回 source inventory
 - 返回 index 状态
 - 返回 coverage 状态
+- 当传入 `--selector` 时，返回该 selector 的 `requestedCoverage`、freshness 与 recommendedAction
 
 约束：
 
@@ -171,6 +172,7 @@ Coverage 可以蕴含更窄 selector。
 - 不执行 sync
 - 可扫描 raw sessions 的 metadata
 - 不读取 raw message content
+- `status --selector` 是 coverage check，不是隐式 sync
 
 ### sync
 
@@ -200,6 +202,7 @@ Coverage 可以蕴含更窄 selector。
 - 从 index 中召回相关 session
 - 返回可继续读取的锚点或 session-level 命中
 - 返回当前 index coverage 摘要
+- 默认按 relevance 排序；显式 `--sort ended|started` 才表示时间排序
 
 约束：
 

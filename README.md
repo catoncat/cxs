@@ -7,7 +7,7 @@ range or page.
 Core workflow:
 
 ```text
-status -> sync --selector -> find/list -> read-range/read-page
+status -> ensure selector coverage -> find/list -> read-range/read-page
 ```
 
 ## What It Is
@@ -57,7 +57,13 @@ Inspect available sources and index coverage:
 cxs status --json
 ```
 
-Build coverage for a project:
+Check coverage for a project:
+
+```bash
+cxs status --selector '{"kind":"cwd","root":"/Users/you/.codex/sessions","cwd":"/Users/you/work/project"}' --json
+```
+
+If `requestedCoverage.recommendedAction` is `"sync"`, build or refresh coverage:
 
 ```bash
 cxs sync --selector '{"kind":"cwd","root":"/Users/you/.codex/sessions","cwd":"/Users/you/work/project"}'
@@ -84,9 +90,9 @@ npx @act0r/cxs@latest find "health check"
 
 | Command | Purpose |
 | --- | --- |
-| `cxs status` | Show execution context, source inventory, index state, and coverage. Does not write the index. |
+| `cxs status` | Show execution context, source inventory, index state, and coverage. `--selector` checks whether a target range is fresh. Does not write the index. |
 | `cxs sync --selector <json>` | Scan selected Codex sessions and update the SQLite index. This is the only write command. |
-| `cxs find <query>` | Search indexed sessions and return ranked session candidates with minimal snippets. |
+| `cxs find <query>` | Search indexed sessions and return ranked session candidates with minimal snippets. Use `--sort ended` for "latest + keyword" queries. |
 | `cxs read-range <sessionUuid>` | Read a small message window around a matched sequence or in-session query. |
 | `cxs read-page <sessionUuid>` | Read a session page by offset and limit. |
 | `cxs list` | List indexed sessions without full-text search. |
@@ -113,6 +119,15 @@ Example list query scoped to one project:
 cxs list --selector '{"kind":"cwd","root":"/Users/you/.codex/sessions","cwd":"/Users/you/work/project"}' --sort ended -n 10
 ```
 
+Example latest keyword query, excluding the current self-hit:
+
+```bash
+cxs find "xsearch" --selector '{"kind":"cwd","root":"/Users/you/.codex/sessions","cwd":"/Users/you/work/project"}' --sort ended --exclude-session <current_session_uuid> -n 5 --json
+```
+
+`find` defaults to relevance sorting. Do not treat default `find` order as time
+order.
+
 ## Sync And Storage
 
 By default, `cxs` reads Codex sessions from `~/.codex/sessions` and stores its
@@ -135,6 +150,11 @@ snapshot: selected sessions whose source JSONL no longer exists are removed
 before complete coverage is written.
 Pass `--best-effort` only when you explicitly want successful files written
 despite failures; best-effort sync does not record complete coverage.
+
+`sync` is not required before every query. Use `status --selector` to check
+coverage first. A fresh `{"kind":"all", ...}` coverage record covers narrower
+selectors under the same root; a high `stats.sessionCount` only means rows exist
+and is not itself a freshness proof.
 
 Indexes created before `cxs-v6-selector-provenance` should be refreshed with
 `sync --selector` so date selectors and read coverage use the current

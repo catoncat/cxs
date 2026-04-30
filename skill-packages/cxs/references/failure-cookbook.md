@@ -4,14 +4,15 @@
 
 | 症状 | 先跑 | 处理 |
 | --- | --- | --- |
-| `find` 零结果但用户坚持存在 | `status --json` | 看目标 selector 是否有 coverage；必要时 `sync --selector`；再带 selector 查询 |
+| `find` 零结果但用户坚持存在 | `status --selector '<json>' --json` | 看目标 selector 的 `requestedCoverage`；必要时 `sync --selector`；再带 selector 查询 |
 | `sync` 非零退出带 per-file errors | `sync --selector '<json>' --json 2>&1` | 看 `errorDetails[]`；默认严格模式；只在允许部分成功时加 `--best-effort` |
 | `sync` 返回 `selector_required` | 原命令补 `--selector` | selector 必须显式，不存在默认范围 |
 | `find/list/stats/read-*` 输出 `index_unavailable` | `status --json` | 索引还没建立；选择 selector 后 `sync --selector` |
 | `stats/list/find` 报 `database is locked` | 原命令重试一次 | 多半是 SQLite 忙；仍失败就先跳过 `stats` 直接读 |
 | 同一主题多条 uuid | `find -n 10 --json` | 按 `startedAt`、`cwd`、`matchCount` 选 |
+| 最新/最近 + 关键词被当前会话抢结果 | `find <query> --sort ended --exclude-session <uuid>` | 默认 `find` 是 relevance 排序；时间问题显式用 `--sort ended` 并排除 self-hit |
 | 中文/CJK 零结果 | 无 | 换至少两字中文、英文关键词，或先用 selector 缩范围 |
-| 用户问“最近本项目讨论了什么” | `status --json` | 用当前 repo cwd 构造 selector，同步后 `list --selector` |
+| 用户问“最近本项目讨论了什么” | `status --selector '<cwd selector>' --json` | coverage fresh 直接 `list --selector`;缺失/stale 才同步 |
 | 用户说“在 X 项目里” | `status --json` | 从 `sourceInventory.cwdGroups` 选择 cwd selector |
 | 从其他 cwd 调用找不到 db | `stats --json` | 看 `dbPath`；必要时显式传 `--db` |
 
@@ -21,11 +22,14 @@
 "${CXS_BIN:-cxs}" status --json
 ```
 
-如果目标范围没有 coverage，先同步明确 selector：
+如果目标范围没有 fresh coverage，先同步明确 selector：
 
 ```bash
+"${CXS_BIN:-cxs}" status --selector '{"kind":"cwd","root":"/Users/me/.codex/sessions","cwd":"/Users/me/work/foo"}' --json
 "${CXS_BIN:-cxs}" sync --selector '{"kind":"cwd","root":"/Users/me/.codex/sessions","cwd":"/Users/me/work/foo"}'
 ```
+
+如果 `status --selector` 返回 `recommendedAction: "query"`，跳过 `sync`。
 
 然后查询时继续带同一个 selector。
 
@@ -77,9 +81,12 @@
 
 ```bash
 "${CXS_BIN:-cxs}" status --json
+"${CXS_BIN:-cxs}" status --selector '{"kind":"cwd","root":"/Users/me/.codex/sessions","cwd":"/absolute/path/to/current/repo"}' --json
 "${CXS_BIN:-cxs}" sync --selector '{"kind":"cwd","root":"/Users/me/.codex/sessions","cwd":"/absolute/path/to/current/repo"}' --json
 "${CXS_BIN:-cxs}" list --selector '{"kind":"cwd","root":"/Users/me/.codex/sessions","cwd":"/absolute/path/to/current/repo"}' --sort ended -n 8 --json
 ```
+
+如果 `status --selector` 返回 `recommendedAction: "query"`，跳过 `sync`。
 
 然后至少再看：
 
@@ -87,6 +94,18 @@
 - `summaryText`
 - `read-page` 开头 6 到 8 条
 - `read-page` 结尾 6 到 8 条
+
+## Recent keyword query
+
+用户问“最新一次 X / 最近哪个 session 提到 X”时:
+
+```bash
+"${CXS_BIN:-cxs}" status --selector '{"kind":"cwd","root":"/Users/me/.codex/sessions","cwd":"/absolute/path/to/current/repo"}' --json
+# recommendedAction 为 "sync" 时才同步
+"${CXS_BIN:-cxs}" find "X" --selector '{"kind":"cwd","root":"/Users/me/.codex/sessions","cwd":"/absolute/path/to/current/repo"}' --sort ended --exclude-session <current_session_uuid> --json -n 5
+```
+
+不要直接用默认 `find "X"` 下“最新”结论；默认排序是 relevance。
 
 ## --json error shape 速查
 
@@ -98,6 +117,7 @@
 | `sync` invalid selector | stdout | `{ "error": { "code": "invalid_selector", "message": "..." } }` |
 | `sync` per-file 错 | stderr | `SyncSummary`，看 `errors / errorDetails[]` |
 | `sync` 锁超时 | stderr | `{ "error": <message string> }` |
+| `status` invalid selector | stdout | `{ "error": { "code": "invalid_selector", "message": "..." } }` |
 | `find / read-range / read-page / list / stats` 索引不存在 | stdout | `{ "error": { "code": "index_unavailable", "message": "...", "dbPath": "...", "hint": "..." } }` |
 | `find / read-range / read-page / list / stats` 其他异常 | 进程异常退出 | 直接非零退出 |
 

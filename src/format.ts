@@ -141,6 +141,12 @@ export function printStatus(status: StatusSummary): void {
   console.log(`sessions:       ${status.index.sessionCount}`);
   console.log(`messages:       ${status.index.messageCount}`);
   console.log(`coverage_count: ${status.coverage.length}`);
+  if (status.requestedCoverage) {
+    console.log(`requested_coverage: ${status.requestedCoverage.freshness}`);
+    console.log(`recommended_action:  ${status.requestedCoverage.recommendedAction}`);
+    console.log(`source_file_count:   ${status.requestedCoverage.sourceFileCount}`);
+    console.log(`covering_selectors:  ${status.requestedCoverage.coveringSelectors.length}`);
+  }
   if (status.sourceInventory.cwdGroups.length > 0) {
     console.log();
     console.log(chalk.bold("source cwd groups"));

@@ -30,7 +30,7 @@ import {
 import { parseSelectorJson, SelectorParseError } from "./selector";
 import { collectStatus } from "./status";
 import { SyncLockTimeoutError } from "./sync-lock";
-import type { Selector, SessionListSort } from "./types";
+import type { FindSort, Selector, SessionListSort } from "./types";
 
 const program = new Command();
 
@@ -43,15 +43,25 @@ program
   .command("status")
   .description("返回执行上下文、source inventory、index 与 coverage 状态")
   .option("--root <dir>", "覆盖默认 sessions 根目录")
+  .option("--selector <json>", "检查指定 selector 的 coverage/freshness（只读，不同步）")
   .option("--db <path>", "覆盖默认数据库路径", DEFAULT_DB_PATH)
   .option("--json", "输出 JSON")
   .action((options) => {
-    const status = collectStatus({ rootDir: options.root, dbPath: options.db, cwd: process.cwd() });
-    if (options.json) {
-      console.log(JSON.stringify(status, null, 2));
-      return;
+    try {
+      const selector = optionalSelector(options.selector);
+      const status = collectStatus({ rootDir: options.root, dbPath: options.db, cwd: process.cwd(), selector: selector ?? undefined });
+      if (options.json) {
+        console.log(JSON.stringify(status, null, 2));
+        return;
+      }
+      printStatus(status);
+    } catch (error) {
+      if (error instanceof SelectorParseError) {
+        emitSelectorError(error, Boolean(options.json));
+        return;
+      }
+      throw error;
     }
-    printStatus(status);
   });
 
 program
@@ -106,13 +116,19 @@ program
   .description("搜索相关 session，返回最小必要命中")
   .option("-n, --limit <n>", "返回条数", "10")
   .option("--selector <json>", "结构化查询范围 JSON")
+  .option("--sort <key>", "排序键：relevance|ended|started", "relevance")
+  .option("--exclude-session <uuid>", "排除指定 session_uuid；可重复", collectValues, [])
   .option("--db <path>", "覆盖默认数据库路径", DEFAULT_DB_PATH)
   .option("--json", "输出 JSON")
   .action((query, options) => {
     runReadCommand(Boolean(options.json), () => {
       const limit = parsePositiveInt(options.limit, 10);
       const selector = optionalSelector(options.selector);
-      const result = findSessions(options.db, query, limit, selector);
+      const sort = normalizeFindSort(options.sort);
+      const result = findSessions(options.db, query, limit, selector, {
+        sort,
+        excludeSessions: options.excludeSession ?? [],
+      });
       if (options.json) {
         console.log(JSON.stringify(result, null, 2));
         return;
@@ -247,6 +263,16 @@ function optionalInt(value: string | undefined): number | undefined {
 function normalizeListSort(value: string | undefined): SessionListSort {
   if (value === "started" || value === "messages") return value;
   return "ended";
+}
+
+function normalizeFindSort(value: string | undefined): FindSort {
+  if (value === "ended" || value === "started") return value;
+  return "relevance";
+}
+
+function collectValues(value: string, previous: string[]): string[] {
+  previous.push(value);
+  return previous;
 }
 
 function runReadCommand(jsonMode: boolean, action: () => void): void {

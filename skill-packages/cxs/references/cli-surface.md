@@ -12,7 +12,7 @@
 export CXS_BIN=/absolute/path/to/bin/cxs
 ```
 
-没有单独的 `init` 命令。首次安装后先跑 `status --json`，根据返回的 `context.root`、`sourceInventory.cwdGroups` 和问题范围构造 selector，再跑 `sync --selector '<json>'`。
+没有单独的 `init` 命令。首次安装后先跑 `status --json`，根据返回的 `context.root`、`sourceInventory.cwdGroups` 和问题范围构造 selector；再用 `status --selector '<json>' --json` 检查 coverage。只有 `requestedCoverage.recommendedAction === "sync"` 时才跑 `sync --selector '<json>'`。
 
 缺少 cxs 索引时,`find` / `read-range` / `read-page` / `list` / `stats --json` 返回:
 
@@ -28,7 +28,14 @@ Example:
 
 ```bash
 "${CXS_BIN:-cxs}" status --json
+"${CXS_BIN:-cxs}" status --selector '{"kind":"cwd","root":"/Users/me/.codex/sessions","cwd":"/Users/me/work/foo"}' --json
 ```
+
+`status --selector` 是只读 coverage check。看 `requestedCoverage`:
+
+- `recommendedAction: "query"`: 目标范围已有 fresh complete coverage，可直接 `find/list`
+- `recommendedAction: "sync"`: coverage 缺失或 stale，先 `sync --selector`
+- fresh `{"kind":"all",...}` coverage 可以覆盖 cwd/date 子 selector；`stats.sessionCount` 只是 rows 数，不等于 coverage 完整证明
 
 Selector shapes:
 
@@ -70,7 +77,17 @@ Example:
 ```bash
 "${CXS_BIN:-cxs}" find "cf tunnel" --json -n 5
 "${CXS_BIN:-cxs}" find "cf tunnel" --selector '{"kind":"cwd","root":"/Users/me/.codex/sessions","cwd":"/Users/me/work/foo"}' --json -n 5
+"${CXS_BIN:-cxs}" find "xsearch" --selector '{"kind":"cwd","root":"/Users/me/.codex/sessions","cwd":"/Users/me/work/foo"}' --sort ended --exclude-session <current_uuid> --json -n 5
 ```
+
+Options:
+
+| option | 说明 |
+| --- | --- |
+| `--selector <json>` | 结构化查询范围 |
+| `--sort relevance|ended|started` | 默认 `relevance`;问"最新/最近 + 关键词"时用 `ended` |
+| `--exclude-session <uuid>` | 排除指定 session;可重复。用于排除当前会话/self-hit |
+| `-n, --limit <n>` | 返回条数 |
 
 ## read-range
 

@@ -7,6 +7,8 @@ Top-level shape:
 ```ts
 {
   query: string;
+  sort: "relevance" | "ended" | "started";
+  excludedSessions: string[];
   results: FindResult[];
   coverage: CoverageStatus;
 }
@@ -115,7 +117,8 @@ Top-level shape:
     dbSizeBytes: number;
     lastSyncAt: string | null;
   };
-  coverage: CoverageRecord[];
+  coverage: CoverageInventoryStatus[];
+  requestedCoverage?: RequestedCoverageStatus;
 }
 ```
 
@@ -197,6 +200,20 @@ type Selector =
   complete: boolean;
   freshness: "not_checked";
   coveringSelectors: CoverageRecord[];
+}
+```
+
+`RequestedCoverageStatus`:
+
+```ts
+{
+  requested: Selector;
+  complete: boolean;
+  freshness: "fresh" | "stale" | "missing";
+  sourceFingerprint: string;
+  sourceFileCount: number;
+  coveringSelectors: CoverageInventoryStatus[];
+  recommendedAction: "query" | "sync";
 }
 ```
 

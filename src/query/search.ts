@@ -1,9 +1,14 @@
 import { selectorWhereSql } from "../db";
 import type { RawHitRow } from "../ranking";
 import { hasCjk, queryTerms } from "../tokenize";
-import type { Selector } from "../types";
+import type { FindSort, Selector } from "../types";
 import type { Db, SqlParams } from "../db";
 import { makeLikeSnippet, makeRawSnippet } from "./snippet";
+
+export interface SearchOptions {
+  sort?: FindSort;
+  excludeSessions?: string[];
+}
 
 export function searchMessageHits(
   db: Db,
@@ -11,6 +16,7 @@ export function searchMessageHits(
   limit: number,
   sessionUuid?: string,
   selector: Selector | null = null,
+  options: SearchOptions = {},
 ): RawHitRow[] {
   const normalized = query.trim();
   if (!normalized) return [];
@@ -21,24 +27,30 @@ export function searchMessageHits(
   // back to a bounded LIKE scan so single-character CJK probes still work
   // even though they are discouraged.
   if (terms.length === 0) {
-    if (hasCjk(normalized)) return searchByLike(db, normalized, limit, sessionUuid, selector);
+    if (hasCjk(normalized)) return searchByLike(db, normalized, limit, sessionUuid, selector, options);
     return [];
   }
 
-  return searchByFts(db, terms, limit, sessionUuid, selector);
+  return searchByFts(db, terms, limit, sessionUuid, selector, options);
 }
 
-export function searchSessionHits(db: Db, query: string, limit: number, selector: Selector | null): RawHitRow[] {
+export function searchSessionHits(
+  db: Db,
+  query: string,
+  limit: number,
+  selector: Selector | null,
+  options: SearchOptions = {},
+): RawHitRow[] {
   const normalized = query.trim();
   if (!normalized || !tableExists(db, "sessions_fts")) return [];
 
   const terms = queryTerms(normalized);
   if (terms.length === 0) {
-    if (hasCjk(normalized)) return searchSessionsByLike(db, normalized, limit, selector);
+    if (hasCjk(normalized)) return searchSessionsByLike(db, normalized, limit, selector, options);
     return [];
   }
 
-  return searchSessionsByFts(db, normalized, terms, limit, selector);
+  return searchSessionsByFts(db, normalized, terms, limit, selector, options);
 }
 
 function searchByFts(
@@ -47,6 +59,7 @@ function searchByFts(
   limit: number,
   sessionUuid?: string,
   selector: Selector | null = null,
+  options: SearchOptions = {},
 ): RawHitRow[] {
   const matchExpr = buildFtsMatch(terms);
   const conditions = [`messages_fts MATCH ?`];
@@ -61,7 +74,10 @@ function searchByFts(
     conditions.push("m.session_uuid = ?");
     params.push(sessionUuid);
   }
+  addExcludedSessions(conditions, params, "m", options.excludeSessions);
   params.push(limit);
+
+  const orderBy = orderBySql(options.sort, "score", "s", "m");
 
   return db
     .prepare<typeof params, RawHitRow>(`
@@ -83,7 +99,7 @@ function searchByFts(
       JOIN messages m ON m.id = messages_fts.rowid
       JOIN sessions s ON s.id = m.session_id
       WHERE ${conditions.join(" AND ")}
-      ORDER BY score
+      ORDER BY ${orderBy}
       LIMIT ?
     `)
     .all(...params) as RawHitRow[];
@@ -95,6 +111,7 @@ function searchSessionsByFts(
   terms: string[],
   limit: number,
   selector: Selector | null,
+  options: SearchOptions = {},
 ): RawHitRow[] {
   const matchExpr = buildFtsMatch(terms);
   const conditions = ["sessions_fts MATCH ?"];
@@ -104,7 +121,9 @@ function searchSessionsByFts(
     conditions.push(...selectorWhere.conditions);
     params.push(...selectorWhere.params);
   }
+  addExcludedSessions(conditions, params, "s", options.excludeSessions);
   params.push(limit);
+  const orderBy = orderBySql(options.sort, "score", "s");
   const rows = db
     .prepare<typeof params, RawHitRow>(`
       SELECT
@@ -124,7 +143,7 @@ function searchSessionsByFts(
       FROM sessions_fts
       JOIN sessions s ON s.id = sessions_fts.rowid
       WHERE ${conditions.join(" AND ")}
-      ORDER BY score
+      ORDER BY ${orderBy}
       LIMIT ?
     `)
     .all(...params) as RawHitRow[];
@@ -140,6 +159,7 @@ function searchSessionsByLike(
   query: string,
   limit: number,
   selector: Selector | null,
+  options: SearchOptions = {},
 ): RawHitRow[] {
   const like = `%${escapeLike(query.toLowerCase())}%`;
   const conditions = [
@@ -156,7 +176,9 @@ function searchSessionsByLike(
     conditions.push(...selectorWhere.conditions);
     params.push(...selectorWhere.params);
   }
+  addExcludedSessions(conditions, params, "s", options.excludeSessions);
   params.push(limit);
+  const orderBy = orderBySql(options.sort, "s.started_at DESC", "s");
 
   const rows = db
     .prepare<typeof params, RawHitRow & { contentText: string }>(`
@@ -174,7 +196,7 @@ function searchSessionsByLike(
         s.title || char(10) || s.summary_text || char(10) || s.compact_text || char(10) || s.reasoning_summary_text AS contentText
       FROM sessions s
       WHERE ${conditions.join(" AND ")}
-      ORDER BY s.started_at DESC
+      ORDER BY ${orderBy}
       LIMIT ?
     `)
     .all(...params) as Array<RawHitRow & { contentText: string }>;
@@ -192,6 +214,7 @@ function searchByLike(
   limit: number,
   sessionUuid?: string,
   selector: Selector | null = null,
+  options: SearchOptions = {},
 ): RawHitRow[] {
   const conditions = ["lower(m.content_text) LIKE ? ESCAPE '\\'"];
   const params: SqlParams = [`%${escapeLike(query.toLowerCase())}%`];
@@ -204,7 +227,9 @@ function searchByLike(
     conditions.push("m.session_uuid = ?");
     params.push(sessionUuid);
   }
+  addExcludedSessions(conditions, params, "m", options.excludeSessions);
   params.push(limit);
+  const orderBy = orderBySql(options.sort, "s.started_at DESC, m.seq ASC", "s", "m");
 
   const rows = db
     .prepare<typeof params, RawHitRow & { contentText: string }>(`
@@ -223,7 +248,7 @@ function searchByLike(
       FROM messages m
       JOIN sessions s ON s.id = m.session_id
       WHERE ${conditions.join(" AND ")}
-      ORDER BY s.started_at DESC, m.seq ASC
+      ORDER BY ${orderBy}
       LIMIT ?
     `)
     .all(...params) as Array<RawHitRow & { contentText: string }>;
@@ -236,6 +261,25 @@ function searchByLike(
     // code that touches this raw score won't see a sign mismatch.
     score: -(index + 1),
   }));
+}
+
+function addExcludedSessions(
+  conditions: string[],
+  params: SqlParams,
+  alias: string,
+  excludedSessions: string[] | undefined,
+): void {
+  const unique = [...new Set((excludedSessions ?? []).map((value) => value.trim()).filter(Boolean))];
+  if (unique.length === 0) return;
+  conditions.push(`${alias}.session_uuid NOT IN (${unique.map(() => "?").join(", ")})`);
+  params.push(...unique);
+}
+
+function orderBySql(sort: FindSort | undefined, relevanceOrder: string, sessionAlias: string, messageAlias?: string): string {
+  if (sort === "ended") return `${sessionAlias}.ended_at DESC, ${relevanceOrder}`;
+  if (sort === "started") return `${sessionAlias}.started_at DESC, ${relevanceOrder}`;
+  if (messageAlias && relevanceOrder === "score") return `score, ${sessionAlias}.ended_at DESC, ${messageAlias}.seq ASC`;
+  return relevanceOrder;
 }
 
 function tableExists(db: Db, tableName: string): boolean {

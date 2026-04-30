@@ -7,7 +7,7 @@
 当前接受的产品边界：
 
 - 命令面固定为：`status`、`sync`、`find`、`read-range`、`read-page`、`list`、`stats`
-- 主工作流固定为：`status -> sync --selector -> find/list -> read-range/read-page`
+- 主工作流固定为：`status -> ensure selector coverage -> find/list -> read-range/read-page`
 - `sync` 是唯一会修改索引的命令；其余命令只读 SQLite
 - 默认接受手动增量同步，不做 watcher / daemon / realtime sync
 - 这个仓库可以作为其他 sidecar / GUI 的 retrieval engine，但本仓库自身不以 GUI 为目标
@@ -15,9 +15,11 @@
 ## 当前实现真相
 
 - 检索主链是 `message/session recall -> session heuristic rerank -> progressive read`
-- `status` 只返回执行上下文、source inventory、index 状态与 coverage 状态；它可以扫描 raw session metadata，但不写 index、不回答内容问题
+- `status` 只返回执行上下文、source inventory、index 状态与 coverage 状态；`status --selector` 只读地报告目标 selector 的 coverage/freshness 和 recommendedAction；它可以扫描 raw session metadata，但不写 index、不回答内容问题
 - 内容回答只能来自 cxs index；source inventory 只能用于构造 selector 和判断可能的同步范围，不能作为内容真相源
 - `sync --selector` 是建立 coverage 的唯一入口；只读命令不得隐式触发 sync
+- 查找前不要求无条件 sync；只有目标 selector coverage 缺失或 stale 时才同步。fresh `all(root)` coverage 可以覆盖同 root 下更窄 selector
+- `find` 默认按 relevance 排序；“最新/最近 + 关键词”应使用 `find <query> --sort ended`，必要时 `--exclude-session` 排除当前会话/self-hit
 - 候选召回来自 `messages_fts` 与 `sessions_fts(title + summary_text + compact_text + reasoning_summary_text)`；极少数零 token CJK query 在 message 侧回退到 LIKE
 - `summary_text`、`compact_text`、`reasoning_summary_text` 已持久化，也会通过 `sessions_fts` 参与 session-level recall
 - session-level FTS 使用显式字段权重：title 8.0、compact 4.0、summary 3.0、reasoning summary 1.2

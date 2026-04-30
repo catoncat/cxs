@@ -77,6 +77,35 @@ describe("cxs cli", () => {
     ]);
   });
 
+  test("status --selector reports requested coverage without writing index", async () => {
+    const base = mkdtempSync(join(tmpdir(), "cxs-cli-status-selector-"));
+    tempDirs.push(base);
+    const root = join(base, "sessions");
+    const sessionsRoot = join(root, "2026", "04", "20");
+    mkdirSync(sessionsRoot, { recursive: true });
+    writeFileSync(
+      join(sessionsRoot, "rollout-2026-04-20T10-00-00-10101010-1010-4010-8010-101010101010.jsonl"),
+      [
+        line("session_meta", { id: "10101010-1010-4010-8010-101010101010", cwd: "/tmp/selector-alpha" }),
+        line("event_msg", { type: "user_message", message: "selector alpha" }),
+      ].join("\n"),
+    );
+
+    const selector = JSON.stringify({ kind: "cwd", root, cwd: "/tmp/selector-alpha" });
+    const result = await runCli(["status", "--root", root, "--selector", selector, "--db", join(base, "missing.sqlite"), "--json"]);
+
+    expect(result.exitCode).toBe(0);
+    const payload = JSON.parse(result.stdout) as {
+      index: { exists: boolean };
+      requestedCoverage: { complete: boolean; freshness: string; recommendedAction: string; sourceFileCount: number };
+    };
+    expect(payload.index.exists).toBe(false);
+    expect(payload.requestedCoverage.complete).toBe(false);
+    expect(payload.requestedCoverage.freshness).toBe("missing");
+    expect(payload.requestedCoverage.recommendedAction).toBe("sync");
+    expect(payload.requestedCoverage.sourceFileCount).toBe(1);
+  });
+
   test("sync requires an explicit selector", async () => {
     const base = mkdtempSync(join(tmpdir(), "cxs-cli-sync-selector-required-"));
     tempDirs.push(base);
@@ -164,6 +193,41 @@ describe("cxs cli", () => {
     expect(payload.coverage[0]?.freshness).toBe("stale");
   });
 
+  test("status --selector treats fresh all coverage as covering a cwd selector", async () => {
+    const base = mkdtempSync(join(tmpdir(), "cxs-cli-coverage-all-covers-cwd-"));
+    tempDirs.push(base);
+    const root = join(base, "sessions");
+    const day = join(root, "2026", "04", "21");
+    mkdirSync(day, { recursive: true });
+    writeFileSync(
+      join(day, "rollout-2026-04-21T10-00-00-13131313-1313-4313-8313-131313131313.jsonl"),
+      [
+        line("session_meta", { id: "13131313-1313-4313-8313-131313131313", cwd: "/tmp/covered-by-all" }),
+        line("event_msg", { type: "user_message", message: "covered by all" }),
+      ].join("\n"),
+    );
+
+    const dbPath = join(base, "index.sqlite");
+    await syncSessions({ dbPath, selector: { kind: "all", root } });
+
+    const selector = JSON.stringify({ kind: "cwd", root, cwd: "/tmp/covered-by-all" });
+    const status = await runCli(["status", "--root", root, "--selector", selector, "--db", dbPath, "--json"]);
+
+    expect(status.exitCode).toBe(0);
+    const payload = JSON.parse(status.stdout) as {
+      requestedCoverage: {
+        complete: boolean;
+        freshness: string;
+        recommendedAction: string;
+        coveringSelectors: Array<{ selector: { kind: string } }>;
+      };
+    };
+    expect(payload.requestedCoverage.complete).toBe(true);
+    expect(payload.requestedCoverage.freshness).toBe("fresh");
+    expect(payload.requestedCoverage.recommendedAction).toBe("query");
+    expect(payload.requestedCoverage.coveringSelectors[0]?.selector.kind).toBe("all");
+  });
+
   test("find text output points to read-range", async () => {
     const base = mkdtempSync(join(tmpdir(), "cxs-cli-"));
     tempDirs.push(base);
@@ -187,6 +251,53 @@ describe("cxs cli", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("next: cxs read-range 44444444-4444-4444-8444-444444444444 --seq 0");
     expect(result.stdout).not.toContain("next: cxs window");
+  });
+
+  test("find can sort by recent time and exclude the current session", async () => {
+    const base = mkdtempSync(join(tmpdir(), "cxs-cli-find-recent-"));
+    tempDirs.push(base);
+    const sessionsRoot = join(base, "sessions", "2026", "04", "21");
+    mkdirSync(sessionsRoot, { recursive: true });
+
+    writeFileSync(
+      join(sessionsRoot, "rollout-2026-04-21T10-00-00-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.jsonl"),
+      [
+        lineAt("2026-04-21T10:00:00.000Z", "session_meta", { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", cwd: "/tmp/recent-keyword" }),
+        lineAt("2026-04-21T10:01:00.000Z", "event_msg", { type: "user_message", message: "$xsearch older target" }),
+      ].join("\n"),
+    );
+    writeFileSync(
+      join(sessionsRoot, "rollout-2026-04-21T12-00-00-bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb.jsonl"),
+      [
+        lineAt("2026-04-21T12:00:00.000Z", "session_meta", { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", cwd: "/tmp/recent-keyword" }),
+        lineAt("2026-04-21T12:01:00.000Z", "event_msg", { type: "user_message", message: "latest question mentions xsearch" }),
+      ].join("\n"),
+    );
+
+    const dbPath = join(base, "index.sqlite");
+    await syncSessions({ dbPath, rootDir: join(base, "sessions") });
+
+    const newest = await runCli(["find", "xsearch", "--sort", "ended", "--db", dbPath, "--json"]);
+    expect(newest.exitCode).toBe(0);
+    const newestPayload = JSON.parse(newest.stdout) as { sort: string; results: Array<{ sessionUuid: string }> };
+    expect(newestPayload.sort).toBe("ended");
+    expect(newestPayload.results[0]?.sessionUuid).toBe("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+
+    const excluded = await runCli([
+      "find",
+      "xsearch",
+      "--sort",
+      "ended",
+      "--exclude-session",
+      "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "--db",
+      dbPath,
+      "--json",
+    ]);
+    expect(excluded.exitCode).toBe(0);
+    const excludedPayload = JSON.parse(excluded.stdout) as { excludedSessions: string[]; results: Array<{ sessionUuid: string }> };
+    expect(excludedPayload.excludedSessions).toEqual(["bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"]);
+    expect(excludedPayload.results[0]?.sessionUuid).toBe("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
   });
 
   test("find emits friendly guidance when index is missing", async () => {
@@ -388,8 +499,12 @@ describe("cxs cli", () => {
 });
 
 function line(type: string, payload: Record<string, unknown>): string {
+  return lineAt(new Date("2026-04-21T00:00:00.000Z").toISOString(), type, payload);
+}
+
+function lineAt(timestamp: string, type: string, payload: Record<string, unknown>): string {
   return JSON.stringify({
-    timestamp: new Date("2026-04-21T00:00:00.000Z").toISOString(),
+    timestamp,
     type,
     payload,
   });
