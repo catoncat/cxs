@@ -1,6 +1,6 @@
 ---
 name: cxs
-description: "用于用户要找本机 Codex 历史会话或 ~/.codex/sessions 上下文:之前、上次、前几天、昨天、我记得我配过、我试过、我们讨论过、翻旧 session、找那次命令、历史对话、Codex 历史、session 历史。Also triggers on English: 'last time I', 'earlier session', 'did we already', 'I remember configuring', 'previous codex chat', 'search my codex history'. 不要用于当前仓库代码搜索(Grep)、读当前文件(Read)、外部文档(WebFetch/WebSearch)、今日提交/日报(commit-daily-summary)或当前会话收尾(session-wrap)。"
+description: "Use proactively for local Codex history and personal setup archaeology. Trigger when the user asks what was discussed/done/configured before, or asks inventory of this Mac's configured servers/VPS/nodes/accounts/domains/providers/services: 本机有哪些服务器配置/都配过啥服务/配过/配置过/装过/调过/之前/上次/刚刚/前几天/我记得/翻旧 session/历史对话. Includes '本机有哪几台服务器的配置，都配过些啥服务' even without cxs. Use before or alongside memory/live inspection. Do not use for current repo code search, known-file reads, web docs, daily summaries, or session wrap-up."
 ---
 
 # cxs
@@ -36,6 +36,7 @@ npx skills add catoncat/cxs --full-depth --skill cxs -g -a codex -y
 | 场景 | 起手 | 原因 |
 | --- | --- | --- |
 | 用户问"之前 / 上次 / 我记得 / 我们讨论过" | `cxs status --json` | 先拿 source inventory 和 coverage |
+| 用户问"本机/这台 Mac 配过什么"、"有哪些服务器/VPS/节点/服务配置" | 先 `cxs status --json`,再用关键词 `服务器 VPS 节点 服务 域名 provider ssh sing-box launchd Cloudflare` 组合查 | 这类是本机配置考古,答案常在旧 Codex session 而不是当前 memory |
 | 用户问"本项目最近的对话" | 构造 `{"kind":"cwd",...}` selector 后先查 coverage,再 `list --sort ended` | 内容只从 cxs index 出来 |
 | 用户问"最新/最近 + 关键词" | 先确保 selector coverage,再 `find <query> --sort ended` | `find` 默认是相关性排序,不是时间排序 |
 | 用户给项目名 / cwd / 时间窗 | 显式构造 selector | cwd/date selector 比全文搜更稳 |
@@ -46,6 +47,7 @@ npx skills add catoncat/cxs --full-depth --skill cxs -g -a codex -y
 - 当前 repo 代码/字符串搜索 → 代码搜索工具
 - 当前文件或已知路径阅读 → 文件读取工具
 - 外部文档/网页 → WebFetch / WebSearch
+- 只问当前 live state 且无历史配置语义 → 运行态/文件检查；但若问题带"配过/以前/本机有哪些配置"语义,先用 cxs 找历史线索再验证 live truth
 - 今日提交/日报 → `commit-daily-summary`
 - 当前会话收尾 → `session-wrap`
 

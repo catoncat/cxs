@@ -1,6 +1,6 @@
 ---
 name: cxsd
-description: "Use when the user wants to dogfood, verify, debug, or compare unpublished local cxs changes from /Users/envvar/work/repos/cxs; mentions cxsd, dev cxs, local cxs, current checkout, or latest local code. Do not use for published-version checks; use cxs there."
+description: "Use when the user wants to dogfood, verify, debug, or compare unpublished local cxs changes from /Users/envvar/work/repos/cxs; mentions cxsd, dev cxs, local cxs, current checkout, latest local code, or asks whether new cxs skill trigger wording works before release. For dev dogfood, also use proactively for local Codex history and personal setup archaeology prompts such as 本机有哪些服务器配置/都配过啥服务/配过/配置过/装过/调过. Do not use for published-version checks; use cxs there."
 ---
 
 # cxsd
@@ -28,6 +28,7 @@ description: "Use when the user wants to dogfood, verify, debug, or compare unpu
 | --- | --- | --- |
 | 验证当前 checkout 的 cxs 行为 | `"${CXSD_BIN:-cxsd}" status --json` | 用本地源码,不碰发布版 |
 | 用户问"之前 / 上次 / 我记得 / 我们讨论过"且要试 dev 版 | `"${CXSD_BIN:-cxsd}" status --json` | 先拿 source inventory 和 coverage |
+| 用户问"本机/这台 Mac 配过什么"、"有哪些服务器/VPS/节点/服务配置"且要试 dev 版 | 先 `"${CXSD_BIN:-cxsd}" status --json`,再用关键词 `服务器 VPS 节点 服务 域名 provider ssh sing-box launchd Cloudflare` 组合查 | 这类是本机配置考古,答案常在旧 Codex session 而不是当前 memory |
 | 用户问"本项目最近的对话" | 构造 `{"kind":"cwd",...}` selector 后先查 coverage,再 `"${CXSD_BIN:-cxsd}" list --sort ended` | 内容只从 cxs index 出来 |
 | 用户问"最新/最近 + 关键词" | 先确保 selector coverage,再 `"${CXSD_BIN:-cxsd}" find <query> --sort ended` | `find` 默认是相关性排序,不是时间排序 |
 | 用户给项目名 / cwd / 时间窗 | 显式构造 selector | cwd/date selector 比全文搜更稳 |
@@ -39,6 +40,7 @@ description: "Use when the user wants to dogfood, verify, debug, or compare unpu
 - 当前 repo 代码/字符串搜索 → 代码搜索工具
 - 当前文件或已知路径阅读 → 文件读取工具
 - 外部文档/网页 → WebFetch / WebSearch
+- 只问当前 live state 且无历史配置语义 → 运行态/文件检查；但若问题带"配过/以前/本机有哪些配置"语义,先用 cxsd 找历史线索再验证 live truth
 - 今日提交/日报 → `commit-daily-summary`
 - 当前会话收尾 → `session-wrap`
 
