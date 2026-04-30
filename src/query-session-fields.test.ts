@@ -58,6 +58,13 @@ describe("cxs session-level fields", () => {
     expect(found.results[0]?.matchSource).toBe("session");
     expect(found.results[0]?.matchSeq).toBeNull();
     expect(found.results[0]?.snippet).toContain("订阅取消提醒");
+
+    const singleCharFound = findSessions(dbPath, "设", 5);
+    expect(singleCharFound.results).toHaveLength(1);
+    expect(singleCharFound.results[0]?.sessionUuid).toBe("abababab-abab-4aba-8aba-abababababab");
+    expect(singleCharFound.results[0]?.matchSource).toBe("session");
+    expect(singleCharFound.results[0]?.matchSeq).toBeNull();
+    expect(singleCharFound.results[0]?.snippet).toContain("<mark>设</mark>");
   });
 
   test("session-level fields have explicit ranking weights", () => {

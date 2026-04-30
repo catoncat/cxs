@@ -33,7 +33,10 @@ export function searchSessionHits(db: Db, query: string, limit: number, selector
   if (!normalized || !tableExists(db, "sessions_fts")) return [];
 
   const terms = queryTerms(normalized);
-  if (terms.length === 0) return [];
+  if (terms.length === 0) {
+    if (hasCjk(normalized)) return searchSessionsByLike(db, normalized, limit, selector);
+    return [];
+  }
 
   return searchSessionsByFts(db, normalized, terms, limit, selector);
 }
@@ -129,6 +132,57 @@ function searchSessionsByFts(
   return rows.map((row) => ({
     ...row,
     snippet: makeRawSnippet(row.contentText, query, terms),
+  }));
+}
+
+function searchSessionsByLike(
+  db: Db,
+  query: string,
+  limit: number,
+  selector: Selector | null,
+): RawHitRow[] {
+  const like = `%${escapeLike(query.toLowerCase())}%`;
+  const conditions = [
+    `(
+      lower(s.title) LIKE ? ESCAPE '\\'
+      OR lower(s.summary_text) LIKE ? ESCAPE '\\'
+      OR lower(s.compact_text) LIKE ? ESCAPE '\\'
+      OR lower(s.reasoning_summary_text) LIKE ? ESCAPE '\\'
+    )`,
+  ];
+  const params: SqlParams = [like, like, like, like];
+  if (selector) {
+    const selectorWhere = selectorWhereSql(selector, "s");
+    conditions.push(...selectorWhere.conditions);
+    params.push(...selectorWhere.params);
+  }
+  params.push(limit);
+
+  const rows = db
+    .prepare<typeof params, RawHitRow & { contentText: string }>(`
+      SELECT
+        s.session_uuid AS sessionUuid,
+        s.title AS title,
+        s.summary_text AS summaryText,
+        s.cwd AS cwd,
+        s.started_at AS startedAt,
+        s.ended_at AS endedAt,
+        'session' AS matchSource,
+        NULL AS matchSeq,
+        'session' AS matchRole,
+        NULL AS matchTimestamp,
+        s.title || char(10) || s.summary_text || char(10) || s.compact_text || char(10) || s.reasoning_summary_text AS contentText
+      FROM sessions s
+      WHERE ${conditions.join(" AND ")}
+      ORDER BY s.started_at DESC
+      LIMIT ?
+    `)
+    .all(...params) as Array<RawHitRow & { contentText: string }>;
+
+  return rows.map((row, index) => ({
+    ...row,
+    snippet: makeRawSnippet(row.contentText, query, []),
+    score: -(index + 1),
   }));
 }
 
