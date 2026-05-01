@@ -75,14 +75,18 @@ export function rerankHits(rows: RawHitRow[], query: string, limit: number): Fin
   for (const row of rows) {
     const signalScore = scoreRow(row, profile);
     const existing = grouped.get(row.sessionUuid);
-    const rowTitleLower = row.title.toLowerCase();
-    const rowCwdLower = row.cwd.toLowerCase();
-    const titlePhrase = profile.normalizedQuery.length > 0
-      && rowTitleLower.includes(profile.normalizedQuery);
-    const titleTermHits = countMatchedTerms(rowTitleLower, profile.terms);
-    const cwdTermHits = countMatchedTerms(rowCwdLower, profile.terms);
 
     if (!existing) {
+      // OPTIMIZATION: title and cwd are identical for all rows of the same session.
+      // Computing them only once per sessionUuid avoids redundant string allocations,
+      // .toLowerCase() conversions, and .includes() term matching overhead.
+      const rowTitleLower = row.title.toLowerCase();
+      const rowCwdLower = row.cwd.toLowerCase();
+      const titlePhrase = profile.normalizedQuery.length > 0
+        && rowTitleLower.includes(profile.normalizedQuery);
+      const titleTermHits = countMatchedTerms(rowTitleLower, profile.terms);
+      const cwdTermHits = countMatchedTerms(rowCwdLower, profile.terms);
+
       grouped.set(row.sessionUuid, {
         row,
         bestRow: row,
@@ -102,9 +106,8 @@ export function rerankHits(rows: RawHitRow[], query: string, limit: number): Fin
     existing.hitCount += 1;
     if (row.matchSource === "session") existing.sessionHitCount += 1;
     if (row.matchRole === "user") existing.userHitCount += 1;
-    existing.titlePhrase = existing.titlePhrase || titlePhrase;
-    existing.titleTermHits = Math.max(existing.titleTermHits, titleTermHits);
-    existing.cwdTermHits = Math.max(existing.cwdTermHits, cwdTermHits);
+    // titlePhrase, titleTermHits, and cwdTermHits are session-level constants,
+    // so we don't need to update them for subsequent rows of the same session.
     if (signalScore > existing.bestRowSignalScore) {
       existing.bestRow = row;
       existing.bestRowSignalScore = signalScore;
