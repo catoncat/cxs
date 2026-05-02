@@ -10,6 +10,9 @@ import type {
   SyncSummary,
 } from "./types";
 
+const SUMMARY_TEXT_BUDGET = 220;
+const TRANSCRIPT_TEXT_BUDGET = 1_000;
+
 export function printSyncSummary(summary: SyncSummary): void {
   console.log(chalk.bold.cyan("cxs sync"));
   console.log(`scanned:  ${summary.scanned}`);
@@ -44,7 +47,7 @@ export function printFindResults(query: string, results: FindResult[]): void {
     const matchPoint = result.matchSeq === null ? "session-level" : `seq=${result.matchSeq}`;
     console.log(chalk.gray(`uuid=${result.sessionUuid} · ${matchPoint} · matches=${result.matchCount}`));
     if (result.summaryText) {
-      console.log(chalk.gray(trimMessage(result.summaryText)));
+      console.log(chalk.gray(trimSummary(result.summaryText)));
     }
     console.log(stripMarks(result.snippet));
     if (result.matchSeq === null) {
@@ -70,7 +73,7 @@ export function printReadRangeResult(
   for (const message of messages) {
     const marker = message.seq === anchorSeq ? chalk.green(">>") : "  ";
     const role = message.role === "user" ? chalk.blue("U") : chalk.white("A");
-    console.log(`${marker} [${message.seq}] ${role} ${trimMessage(message.contentText)}`);
+    console.log(`${marker} [${message.seq}] ${role} ${trimTranscriptMessage(message.contentText)}`);
   }
 }
 
@@ -88,7 +91,7 @@ export function printReadPage(
 
   for (const message of messages) {
     const role = message.role === "user" ? chalk.blue("U") : chalk.white("A");
-    console.log(`[${message.seq}] ${role} ${trimMessage(message.contentText)}`);
+    console.log(`[${message.seq}] ${role} ${trimTranscriptMessage(message.contentText)}`);
   }
 }
 
@@ -104,7 +107,7 @@ export function printSessionList(results: SessionListEntry[]): void {
     console.log(chalk.gray(`${entry.endedAt} · ${entry.cwd || "-"} · msgs=${entry.messageCount}`));
     console.log(chalk.gray(`uuid=${entry.sessionUuid}`));
     if (entry.summaryText) {
-      console.log(chalk.gray(trimMessage(entry.summaryText)));
+      console.log(chalk.gray(trimSummary(entry.summaryText)));
     }
   }
 }
@@ -156,9 +159,17 @@ export function printStatus(status: StatusSummary): void {
   }
 }
 
-function trimMessage(text: string): string {
+function trimSummary(text: string): string {
+  return trimText(text, SUMMARY_TEXT_BUDGET);
+}
+
+function trimTranscriptMessage(text: string): string {
+  return trimText(text, TRANSCRIPT_TEXT_BUDGET);
+}
+
+function trimText(text: string, limit: number): string {
   const normalized = text.replace(/\s+/g, " ").trim();
-  return normalized.length > 220 ? `${normalized.slice(0, 220)}…` : normalized;
+  return normalized.length > limit ? `${normalized.slice(0, limit)}…` : normalized;
 }
 
 function stripMarks(snippet: string): string {
