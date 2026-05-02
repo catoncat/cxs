@@ -26,23 +26,26 @@ export function makeRawSnippet(content: string, query: string, terms: string[]):
   const termHits = termLowers.flatMap((term) => collectTermHits(lower, term));
   if (termHits.length === 0) return content.slice(0, 160);
 
-  const bestWindow = termHits
-    .map((hit) => {
-      const start = Math.max(0, hit.index - 40);
-      const end = Math.min(content.length, hit.index + hit.length + 80);
-      return {
-        start,
-        end,
-        anchor: hit.index,
-        score: scoreSnippetWindow(lower.slice(start, end), termLowers),
-      };
-    })
-    .sort((left, right) => {
-      if (right.score !== left.score) return right.score - left.score;
-      return left.anchor - right.anchor;
-    })[0];
+  // OPTIMIZATION: Track best window in a single pass.
+  // Avoids intermediate array allocations from map() and O(N log N) overhead from sort().
+  let bestStart = 0;
+  let bestEnd = 0;
+  let bestAnchor = Infinity;
+  let bestScore = -1;
 
-  return snippetWindow(content, bestWindow.start, bestWindow.end, termLowers);
+  for (const hit of termHits) {
+    const start = Math.max(0, hit.index - 40);
+    const end = Math.min(content.length, hit.index + hit.length + 80);
+    const score = scoreSnippetWindow(lower.slice(start, end), termLowers);
+    if (score > bestScore || (score === bestScore && hit.index < bestAnchor)) {
+      bestStart = start;
+      bestEnd = end;
+      bestAnchor = hit.index;
+      bestScore = score;
+    }
+  }
+
+  return snippetWindow(content, bestStart, bestEnd, termLowers);
 }
 
 function snippetAround(content: string, index: number, length: number, needleLowers: string[]): string {
@@ -76,13 +79,26 @@ function scoreSnippetWindow(lowerSnippet: string, termLowers: string[]): number 
   let matchedChars = 0;
 
   for (const term of termLowers) {
-    const hits = collectTermHits(lowerSnippet, term).length;
+    const hits = countTermHits(lowerSnippet, term);
     if (hits > 0) distinctTerms += 1;
     totalHits += hits;
     matchedChars += hits * term.length;
   }
 
   return distinctTerms * 1_000 + matchedChars * 10 + totalHits;
+}
+
+function countTermHits(lower: string, termLower: string): number {
+  // OPTIMIZATION: Count hits without allocating an array of match objects.
+  let count = 0;
+  let cursor = 0;
+  while (cursor < lower.length) {
+    const index = lower.indexOf(termLower, cursor);
+    if (index < 0) break;
+    count += 1;
+    cursor = index + termLower.length;
+  }
+  return count;
 }
 
 function uniqueNonEmpty(values: string[]): string[] {
