@@ -1,4 +1,5 @@
-import type { MatchSource } from "../src/types";
+import { canonicalizeSelector } from "../src/selector";
+import type { FindSort, MatchSource, Selector } from "../src/types";
 
 export type DogfoodStatus = "candidate" | "hard" | "stale";
 export type DogfoodOriginKind = "observed-user-ask" | "evidence-backed-derived" | "manual";
@@ -28,11 +29,22 @@ export interface DogfoodExpected {
   context?: DogfoodExpectedContext;
 }
 
+export interface DogfoodFindOptions {
+  queries?: string[];
+  limit?: number;
+  sort?: FindSort;
+  selector?: Selector;
+  cwd?: string;
+  root?: string;
+  excludeSessionUuids?: string[];
+}
+
 export interface DogfoodGolden {
   id: string;
   query: string;
   intent: string;
   status: DogfoodStatus;
+  find?: DogfoodFindOptions;
   origin?: DogfoodOrigin;
   expected: DogfoodExpected;
 }
@@ -89,10 +101,16 @@ function validateDogfoodGolden(
   const expected = parseExpected(value.expected);
   if (!expected) return { ok: false, error: "expected must contain at least one assertion" };
 
+  const find = parseFindOptions(value.find);
+  if (find === "invalid") return { ok: false, error: "find is invalid" };
+
   const origin = parseOrigin(value.origin, lineNumber);
   if (origin === "invalid") return { ok: false, error: "origin is invalid" };
 
-  return { ok: true, value: { id, query, intent, status, expected, ...(origin ? { origin } : {}) } };
+  return {
+    ok: true,
+    value: { id, query, intent, status, ...(find ? { find } : {}), ...(origin ? { origin } : {}), expected },
+  };
 }
 
 function parseExpected(value: unknown): DogfoodExpected | null {
@@ -137,6 +155,43 @@ function parseContext(value: unknown): DogfoodExpectedContext | undefined {
   if (mustContain) context.mustContain = mustContain;
 
   return Object.keys(context).length > 0 ? context : undefined;
+}
+
+function parseFindOptions(value: unknown): DogfoodFindOptions | undefined | "invalid" {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) return "invalid";
+
+  const find: DogfoodFindOptions = {};
+
+  const queries = readStringArray(value.queries);
+  if (queries) find.queries = queries;
+
+  const limit = readPositiveInteger(value.limit);
+  if (limit) find.limit = limit;
+
+  if (value.sort !== undefined) {
+    if (value.sort !== "relevance" && value.sort !== "ended" && value.sort !== "started") return "invalid";
+    find.sort = value.sort;
+  }
+
+  if (value.selector !== undefined) {
+    try {
+      find.selector = canonicalizeSelector(value.selector);
+    } catch {
+      return "invalid";
+    }
+  }
+
+  const cwd = readNonEmptyString(value, "cwd");
+  if (cwd) find.cwd = cwd;
+
+  const root = readNonEmptyString(value, "root");
+  if (root) find.root = root;
+
+  const excludeSessionUuids = readStringArray(value.excludeSessionUuids);
+  if (excludeSessionUuids) find.excludeSessionUuids = excludeSessionUuids;
+
+  return Object.keys(find).length > 0 ? find : undefined;
 }
 
 function parseOrigin(value: unknown, _lineNumber: number): DogfoodOrigin | undefined | "invalid" {

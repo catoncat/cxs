@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { desiredContextMode, evaluateDogfoodItem, selectDogfoodHit } from "./dogfood-eval-core";
+import { parseDogfoodJsonl } from "./dogfood-schema";
 import type { DogfoodGolden } from "./dogfood-schema";
 import type { FindResult } from "../src/types";
 
@@ -48,6 +49,35 @@ describe("dogfood eval core", () => {
 
     expect(desiredContextMode(item, findResult({ matchSource: "message", matchSeq: 7 }))).toBe("read-range");
     expect(desiredContextMode(item, findResult({ matchSource: "session", matchSeq: null }))).toBe("read-page");
+  });
+
+  test("parses find workflow options for dogfood runner attempts", () => {
+    const parsed = parseDogfoodJsonl(JSON.stringify({
+      id: "recent-project-skill-md",
+      query: "$cxs 最近本项目讨论 SKILLS.md 的 session",
+      intent: "recover the prior skill discussion",
+      status: "candidate",
+      find: {
+        queries: ["SKILL.md", "skills/mainline/SKILL.md"],
+        sort: "ended",
+        cwd: "/Users/envvar/work/repos/mainline",
+        root: "/Users/envvar/.codex/sessions",
+        excludeSessionUuids: ["current-session"],
+      },
+      expected: {
+        topK: 5,
+        acceptableSessionUuids: ["target-session"],
+      },
+    }), "goldens.local.jsonl");
+
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.entries[0]?.find).toEqual({
+      queries: ["SKILL.md", "skills/mainline/SKILL.md"],
+      sort: "ended",
+      cwd: "/Users/envvar/work/repos/mainline",
+      root: "/Users/envvar/.codex/sessions",
+      excludeSessionUuids: ["current-session"],
+    });
   });
 });
 

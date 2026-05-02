@@ -5,7 +5,8 @@ import { spawn as childSpawn } from "node:child_process";
 import { basename, join, resolve } from "node:path";
 import { desiredContextMode, evaluateDogfoodItem, type DogfoodEvaluation } from "./dogfood-eval-core";
 import { parseDogfoodJsonl, type DogfoodGolden } from "./dogfood-schema";
-import type { FindResult } from "../src/types";
+import { DEFAULT_CODEX_DIR } from "../src/env";
+import type { FindResult, FindSort, Selector } from "../src/types";
 
 interface FindOutput {
   query: string;
@@ -15,6 +16,15 @@ interface FindOutput {
 interface Args {
   goldenPath: string;
   includeStale: boolean;
+}
+
+interface FindAttemptSpec {
+  ordinal: number;
+  query: string;
+  limit: number;
+  sort?: FindSort;
+  selector?: Selector;
+  excludeSessionUuids: string[];
 }
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -40,6 +50,20 @@ interface DogfoodEvalRow {
   selectedTitle: string;
   findJsonPath: string;
   contextTxtPath?: string;
+  attemptCount: number;
+  selectedAttemptOrdinal: number | null;
+  selectedAttemptQuery: string;
+  attempts: DogfoodAttemptRow[];
+}
+
+interface DogfoodAttemptRow {
+  spec: FindAttemptSpec;
+  evaluation: DogfoodEvaluation;
+  top1Title: string;
+  selectedTitle: string;
+  findJsonPath: string;
+  findTxtPath: string;
+  contextTxtPath?: string;
 }
 
 const rows: DogfoodEvalRow[] = [];
@@ -47,33 +71,20 @@ const rows: DogfoodEvalRow[] = [];
 for (const [index, item] of entries.entries()) {
   const prefix = String(index + 1).padStart(2, "0");
   const safeId = item.id.replace(/[^a-zA-Z0-9_.-]+/g, "-");
-  const limit = Math.max(item.expected.topK ?? 5, 5);
-
-  const findJson = await runCommand([process.execPath, "--import", "tsx", CLI_ENTRY, "find", item.query, "--limit", String(limit), "--json"]);
-  const findText = await runCommand([process.execPath, "--import", "tsx", CLI_ENTRY, "find", item.query, "--limit", String(limit)]);
-  const findJsonPath = join(outDir, `${prefix}-${safeId}.find.json`);
-  const findTxtPath = join(outDir, `${prefix}-${safeId}.find.txt`);
-  writeFileSync(findJsonPath, findJson);
-  writeFileSync(findTxtPath, findText);
-
-  const parsedFind = JSON.parse(findJson) as FindOutput;
-  const preselected = evaluateDogfoodItem({ item, results: parsedFind.results }).selected;
-  const context = await readContextIfNeeded(item, preselected.hit, prefix, safeId, outDir);
-  const evaluation = evaluateDogfoodItem({
-    item,
-    results: parsedFind.results,
-    contextText: context.text,
-    contextKind: context.kind,
-    contextUnavailableReason: context.unavailableReason,
-  });
+  const attempts = await runFindAttempts(item, prefix, safeId, outDir);
+  const selectedAttempt = attempts.find((attempt) => attempt.evaluation.mark === "pass") ?? attempts[0] ?? null;
 
   rows.push({
     item,
-    evaluation,
-    top1Title: parsedFind.results[0]?.title ?? "(none)",
-    selectedTitle: evaluation.selected.hit?.title ?? "(none)",
-    findJsonPath,
-    contextTxtPath: context.textPath,
+    evaluation: selectedAttempt?.evaluation ?? emptyEvaluation(item),
+    top1Title: selectedAttempt?.top1Title ?? "(none)",
+    selectedTitle: selectedAttempt?.selectedTitle ?? "(none)",
+    findJsonPath: selectedAttempt?.findJsonPath ?? "",
+    contextTxtPath: selectedAttempt?.contextTxtPath,
+    attemptCount: attempts.length,
+    selectedAttemptOrdinal: selectedAttempt?.spec.ordinal ?? null,
+    selectedAttemptQuery: selectedAttempt?.spec.query ?? item.query,
+    attempts,
   });
 }
 
@@ -85,6 +96,93 @@ writeFileSync(scorecardPath, `${JSON.stringify({ source: args.goldenPath, scoreb
 
 console.log(JSON.stringify({ outDir, readme: readmePath, scorecard: scorecardPath, scoreboard }, null, 2));
 if (scoreboard.hardFail > 0) process.exitCode = 1;
+
+async function runFindAttempts(
+  item: DogfoodGolden,
+  prefix: string,
+  safeId: string,
+  outDir: string,
+): Promise<DogfoodAttemptRow[]> {
+  const specs = buildFindAttemptSpecs(item);
+  const rows: DogfoodAttemptRow[] = [];
+
+  for (const spec of specs) {
+    const suffix = specs.length === 1 ? "" : `.attempt-${String(spec.ordinal).padStart(2, "0")}`;
+    const command = buildFindCommand(spec);
+    const findJson = await runCommand([...command, "--json"]);
+    const findText = await runCommand(command);
+    const findJsonPath = join(outDir, `${prefix}-${safeId}${suffix}.find.json`);
+    const findTxtPath = join(outDir, `${prefix}-${safeId}${suffix}.find.txt`);
+    writeFileSync(findJsonPath, findJson);
+    writeFileSync(findTxtPath, findText);
+
+    const parsedFind = JSON.parse(findJson) as FindOutput;
+    const preselected = evaluateDogfoodItem({ item, results: parsedFind.results }).selected;
+    const context = await readContextIfNeeded(item, preselected.hit, prefix, `${safeId}${suffix}`, outDir);
+    const evaluation = evaluateDogfoodItem({
+      item,
+      results: parsedFind.results,
+      contextText: context.text,
+      contextKind: context.kind,
+      contextUnavailableReason: context.unavailableReason,
+    });
+
+    rows.push({
+      spec,
+      evaluation,
+      top1Title: parsedFind.results[0]?.title ?? "(none)",
+      selectedTitle: evaluation.selected.hit?.title ?? "(none)",
+      findJsonPath,
+      findTxtPath,
+      contextTxtPath: context.textPath,
+    });
+  }
+
+  return rows;
+}
+
+function buildFindAttemptSpecs(item: DogfoodGolden): FindAttemptSpec[] {
+  const options = item.find ?? {};
+  const queries = uniqueNonEmpty(options.queries?.length ? options.queries : [item.query]);
+  const selector = options.selector ?? selectorFromCwd(options.cwd, options.root);
+  const limit = Math.max(item.expected.topK ?? 5, options.limit ?? 0, 5);
+  const excludeSessionUuids = uniqueNonEmpty(options.excludeSessionUuids ?? []);
+
+  return queries.map((query, index) => ({
+    ordinal: index + 1,
+    query,
+    limit,
+    ...(options.sort ? { sort: options.sort } : {}),
+    ...(selector ? { selector } : {}),
+    excludeSessionUuids,
+  }));
+}
+
+function selectorFromCwd(cwd: string | undefined, root: string | undefined): Selector | undefined {
+  if (!cwd) return undefined;
+  return { kind: "cwd", root: resolve(root ?? DEFAULT_CODEX_DIR), cwd };
+}
+
+function buildFindCommand(spec: FindAttemptSpec): string[] {
+  const command = [process.execPath, "--import", "tsx", CLI_ENTRY, "find", spec.query, "--limit", String(spec.limit)];
+  if (spec.sort) command.push("--sort", spec.sort);
+  if (spec.selector) command.push("--selector", JSON.stringify(spec.selector));
+  for (const sessionUuid of spec.excludeSessionUuids) command.push("--exclude-session", sessionUuid);
+  return command;
+}
+
+function uniqueNonEmpty(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function emptyEvaluation(item: DogfoodGolden): DogfoodEvaluation {
+  return {
+    mark: item.status === "stale" ? "skip" : "fail",
+    blocking: item.status === "hard",
+    selected: { hit: null, rank: null, topK: item.expected.topK ?? 5 },
+    predicateResults: [],
+  };
+}
 
 async function readContextIfNeeded(
   item: DogfoodGolden,
@@ -173,6 +271,8 @@ function renderReadme(
     lines.push("", `## ${row.item.id}`, "");
     lines.push(`- intent: ${row.item.intent}`);
     lines.push(`- query: ${row.item.query}`);
+    if (row.attemptCount > 1) lines.push(`- attempts: ${row.attemptCount}`);
+    lines.push(`- selected_attempt: ${row.selectedAttemptOrdinal ?? "-"} / \`${row.selectedAttemptQuery}\``);
     lines.push(`- status: ${row.item.status}`);
     lines.push(`- mark: ${row.evaluation.mark}`);
     lines.push(`- top1_title: ${row.top1Title}`);
@@ -180,6 +280,12 @@ function renderReadme(
     lines.push(`- find_json: \`${rel(row.findJsonPath)}\``);
     if (row.contextTxtPath) lines.push(`- context_txt: \`${rel(row.contextTxtPath)}\``);
     lines.push(`- predicates: ${formatPredicates(row.evaluation.predicateResults)}`);
+    if (row.attempts.length > 1) {
+      lines.push("", "### attempts", "");
+      for (const attempt of row.attempts) {
+        lines.push(`- ${attempt.spec.ordinal}. \`${attempt.spec.query}\` -> ${attempt.evaluation.mark}; selected: ${attempt.selectedTitle.replaceAll("|", "¦").slice(0, 80)}`);
+      }
+    }
   }
 
   return lines.join("\n");

@@ -19,7 +19,9 @@
   - `snippet`
 - [eval/run-dogfood-eval.ts](/Users/envvar/work/repos/cxs/eval/run-dogfood-eval.ts) 已提供本机 dogfood golden runner：
   - 读取 ignored JSONL golden 文件
+  - 支持为单个 golden 描述真实检索 workflow：多 query attempt、`sort`、cwd/selector scope、排除 self-hit session
   - 检查 expected session / cwd / matchSource / context key phrase
+  - 每个 attempt 会落盘 find/context artifact，scorecard 会标出最终采用的 attempt
   - `hard` 失败会以非零退出阻断本机 gate
   - `candidate` 失败只报告，不阻断
 
@@ -31,6 +33,7 @@
   - session 是否对
   - `read-range` 是否给出有用上下文
   - 是否命中关键 message / key phrase
+- 对“最近本项目 / self-hit / 文件名近似”这类真实 agent workflow，优先用 dogfood 的 `find` workflow 字段表达当前可复现路径，再决定是否沉淀成正式 CLI 选项（例如 `--cwd`、`--exclude-current`、`recent`）
 - 继续复用现有：
   - `npm run eval:manual`
   - `npm run eval:dogfood -- <goldens.local.jsonl>`
