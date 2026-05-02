@@ -63,6 +63,33 @@ npx skills add catoncat/cxs --full-depth --skill cxs -g -a codex -y
 - `cwd` 只是候选过滤,不是主题真相;还要再看 `title`、`summaryText`、开头几条 message
 - 同主题可能多个 uuid;按 `cwd / startedAt / matchCount` 选,不要按 title 脑补去重
 
+## 使用后自评
+
+每次用 cxs 回答完，都做一次轻量自评；不要把这段长篇输出给用户，只在有问题时简短暴露结论。
+
+这个自评和 `$cxs-dogfood` 是配套流程：`cxs` 只发现并提示可记录的 case，`cxs-dogfood` 才负责交互式采集、写入私有 golden、跑 eval、生成修复 handoff。
+
+判断这次结果属于哪类：
+
+- `good`: 找到的 session/cwd/时间/上下文能支撑答案。
+- `query-refine`: 第一条 query 不理想，但通过改关键词、selector、`--sort ended`、`--exclude-session` 等正常使用方式解决了。
+- `coverage-issue`: 问题来自索引缺失/stale 或 selector 没覆盖；应说明需要 `status --selector` / `sync --selector`，不要归因给排序。
+- `skill-guidance-issue`: cxs CLI 没错，是 agent 没按 skill 流程用，比如把默认 `find` 当最新、伪造 `read-range --seq`、跳过 selector。
+- `dogfood-candidate`: 仍有可复现的不符合预期，例如 recall miss、明显错排、上下文窗口不对、session hit/message hit 行为让 agent 难以稳定使用。
+
+如果是 `dogfood-candidate`：
+
+1. 不要自动写私有 golden；`cxs-dogfood` 只能由用户显式触发。
+2. 给用户一句可直接确认的提示，例如：
+
+   ```text
+   这次像是 cxs dogfood candidate：<一句话原因>。如果要记录，直接说 `$cxs-dogfood 记录这个 case`。
+   ```
+
+3. 在当前回复中保留足够 handoff 线索：原始 query、实际 top1/竞争项、期望 session/cwd 或缺失的上下文短语。
+4. 如果用户随后说“记录/加进去/对，记录这个 case”，把它视为显式触发 `cxs-dogfood`，由那个 skill 交互式补齐和验证。
+5. 不要在 `cxs` skill 内继续设计修复方案；记录完成后的“是否启动修复 / 输出 handoff”由 `cxs-dogfood` 收尾处理。
+
 ## 前置
 
 - 先 `status --json` 看 `context / sourceInventory / coverage`
