@@ -1,5 +1,5 @@
 import type { FindMatchRole, FindResult, MatchSource } from "./types";
-import { queryTerms } from "./tokenize";
+import { queryTerms, tokenize } from "./tokenize";
 
 export interface RawHitRow {
   sessionUuid: string;
@@ -24,6 +24,7 @@ export interface QueryProfile {
   normalizedQuery: string;
   terms: string[];
   isMultiTerm: boolean;
+  isPathLikeCommand: boolean;
 }
 
 /**
@@ -50,6 +51,7 @@ export function classifyQueryProfile(query: string): QueryProfile & { kind: "bro
     normalizedQuery,
     terms,
     isMultiTerm: hasMultipleRawTokens,
+    isPathLikeCommand: hasMultipleRawTokens && hasPathLikeToken,
   };
 }
 
@@ -78,7 +80,9 @@ export function rerankHits(rows: RawHitRow[], query: string, limit: number): Fin
     const rowTitleLower = row.title.toLowerCase();
     const rowCwdLower = row.cwd.toLowerCase();
     const titlePhrase = profile.normalizedQuery.length > 0
-      && rowTitleLower.includes(profile.normalizedQuery);
+      && (profile.isPathLikeCommand
+        ? containsBoundedPhrase(rowTitleLower, profile.normalizedQuery)
+        : rowTitleLower.includes(profile.normalizedQuery));
     const titleTermHits = countMatchedTerms(rowTitleLower, profile.terms);
     const cwdTermHits = countMatchedTerms(rowCwdLower, profile.terms);
 
@@ -172,11 +176,15 @@ function scoreRow(row: RawHitRow, profile: QueryProfile): number {
   const normalizedBm25 = -row.score; // higher is better now
   const contentLower = row.contentText.toLowerCase();
   const contentPhrase = profile.normalizedQuery.length > 0
-    && contentLower.includes(profile.normalizedQuery);
+    && (profile.isPathLikeCommand
+      ? containsBoundedPhrase(contentLower, profile.normalizedQuery)
+      : contentLower.includes(profile.normalizedQuery));
   const termCoverage = countMatchedTerms(contentLower, profile.terms);
+  const commandSequenceBonus = scorePathLikeCommandSequence(contentLower, profile);
 
   return normalizedBm25
     + (contentPhrase ? 8 : 0)
+    + commandSequenceBonus
     + termCoverage * 2
     + (row.matchSource === "message" ? 4 : 0)
     + (row.matchRole === "user" ? 2 : 0);
@@ -220,6 +228,63 @@ function countMatchedTerms(haystack: string, terms: string[]): number {
     if (haystack.includes(term)) matched += 1;
   }
   return matched;
+}
+
+function scorePathLikeCommandSequence(haystack: string, profile: QueryProfile): number {
+  if (!profile.isPathLikeCommand || profile.terms.length < 2) return 0;
+  if (containsBoundedPhrase(haystack, profile.normalizedQuery)) return 36;
+
+  const span = shortestOrderedSpan(tokenize(haystack), profile.terms);
+  if (span === null) return 0;
+
+  const gaps = span - profile.terms.length;
+  if (gaps === 0) return 8;
+  if (gaps <= 3) return 24 - gaps * 2;
+  if (gaps <= profile.terms.length) return 10 - gaps;
+  return 0;
+}
+
+function shortestOrderedSpan(tokens: string[], terms: string[]): number | null {
+  let best = Infinity;
+
+  for (let start = 0; start < tokens.length; start += 1) {
+    if (tokens[start] !== terms[0]) continue;
+
+    let termIndex = 1;
+    let end = start;
+    while (termIndex < terms.length && end + 1 < tokens.length) {
+      end += 1;
+      if (tokens[end] === terms[termIndex]) termIndex += 1;
+    }
+
+    if (termIndex === terms.length) {
+      best = Math.min(best, end - start + 1);
+    }
+  }
+
+  return best === Infinity ? null : best;
+}
+
+function containsBoundedPhrase(haystack: string, phrase: string): boolean {
+  if (!phrase) return false;
+
+  let offset = 0;
+  while (offset < haystack.length) {
+    const index = haystack.indexOf(phrase, offset);
+    if (index < 0) return false;
+
+    const before = index > 0 ? haystack[index - 1] : undefined;
+    const afterIndex = index + phrase.length;
+    const after = afterIndex < haystack.length ? haystack[afterIndex] : undefined;
+    if (isPhraseBoundary(before) && isPhraseBoundary(after)) return true;
+    offset = index + 1;
+  }
+
+  return false;
+}
+
+function isPhraseBoundary(char: string | undefined): boolean {
+  return !char || !/[\p{Letter}\p{Number}_./-]/u.test(char);
 }
 
 function getTimestamp(iso: string): number {

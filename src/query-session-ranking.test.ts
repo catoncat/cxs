@@ -118,4 +118,47 @@ describe("cxs session ranking", () => {
       "34343434-3434-4343-8343-343434343434",
     ]);
   });
+
+  test("path-like command query prefers bounded command use over prefix and scattered term mentions", async () => {
+    const base = mkdtempSync(join(tmpdir(), "cxs-command-rank-"));
+    tempDirs.push(base);
+    const sessionsRoot = join(base, "sessions", "2026", "05", "01");
+    mkdirSync(sessionsRoot, { recursive: true });
+
+    writeFileSync(
+      join(sessionsRoot, "rollout-2026-05-01T09-00-00-e1e1e1e1-e1e1-41e1-81e1-e1e1e1e1e1e1.jsonl"),
+      [
+        line("session_meta", { id: "e1e1e1e1-e1e1-41e1-81e1-e1e1e1e1e1e1", cwd: "/tmp/tool-debug" }),
+        line("turn_context", { model: "gpt-5.4" }),
+        line("event_msg", { type: "user_message", message: "调试 node build/cli.js deploy-preview 的异常输出" }),
+        line("event_msg", {
+          type: "agent_message",
+          message: [
+            "复现发行调试：node build/cli.js deploy-preview 会触发 db missing。",
+            "另外 deploy 包时检查 package metadata。",
+          ].join(" "),
+        }),
+      ].join("\n"),
+    );
+
+    writeFileSync(
+      join(sessionsRoot, "rollout-2026-05-01T10-00-00-f2f2f2f2-f2f2-42f2-82f2-f2f2f2f2f2f2.jsonl"),
+      [
+        line("session_meta", { id: "f2f2f2f2-f2f2-42f2-82f2-f2f2f2f2f2f2", cwd: "/tmp/deploy-tool" }),
+        line("turn_context", { model: "gpt-5.4" }),
+        line("event_msg", { type: "user_message", message: "怎么发布" }),
+        line("event_msg", {
+          type: "agent_message",
+          message: "cd /tmp/deploy-tool 后运行 node build/cli.js deploy fixtures/sample.jsonl --json",
+        }),
+      ].join("\n"),
+    );
+
+    const dbPath = join(base, "index.sqlite");
+    const summary = await syncSessions({ dbPath, rootDir: join(base, "sessions") });
+    expect(summary.added).toBe(2);
+
+    const found = findSessions(dbPath, "node build/cli.js deploy", 5);
+    expect(found.results[0]?.sessionUuid).toBe("f2f2f2f2-f2f2-42f2-82f2-f2f2f2f2f2f2");
+  });
 });

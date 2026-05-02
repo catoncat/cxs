@@ -253,6 +253,43 @@ describe("cxs cli", () => {
     expect(result.stdout).not.toContain("next: cxs window");
   });
 
+  test("read-range text keeps command evidence inside long messages", async () => {
+    const base = mkdtempSync(join(tmpdir(), "cxs-cli-read-range-long-"));
+    tempDirs.push(base);
+    const sessionsRoot = join(base, "sessions", "2026", "05", "01");
+    mkdirSync(sessionsRoot, { recursive: true });
+
+    const command = "node build/cli.js deploy fixtures/sample.jsonl --json";
+    const leadIn = Array.from({ length: 80 }, (_, index) => `context-${index}`).join(" ");
+    writeFileSync(
+      join(sessionsRoot, "rollout-2026-05-01T10-00-00-55555555-5555-4555-8555-555555555555.jsonl"),
+      [
+        line("session_meta", { id: "55555555-5555-4555-8555-555555555555", cwd: "/tmp/long-command" }),
+        line("turn_context", { model: "gpt-5.4" }),
+        line("event_msg", { type: "agent_message", message: `${leadIn} ${command}` }),
+      ].join("\n"),
+    );
+
+    const dbPath = join(base, "index.sqlite");
+    await syncSessions({ dbPath, rootDir: join(base, "sessions") });
+
+    const result = await runCli([
+      "read-range",
+      "55555555-5555-4555-8555-555555555555",
+      "--seq",
+      "0",
+      "--before",
+      "0",
+      "--after",
+      "0",
+      "--db",
+      dbPath,
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(command);
+  });
+
   test("find can sort by recent time and exclude the current session", async () => {
     const base = mkdtempSync(join(tmpdir(), "cxs-cli-find-recent-"));
     tempDirs.push(base);
