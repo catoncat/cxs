@@ -87,7 +87,17 @@ export async function parseCodexSession(filePath: string): Promise<ParseSessionR
   if (!sessionUuid || eventMessages.length === 0) return { kind: "skipped" };
 
   const title = firstUserMessage(eventMessages) ?? "(no title)";
-  const timestamps = eventMessages.map((message) => message.timestamp).sort();
+
+  // OPTIMIZATION: Track min/max timestamps in a single O(N) pass.
+  // Avoids O(N) array allocation from map() and O(N log N) overhead from sort().
+  let minTimestamp: string | null = null;
+  let maxTimestamp: string | null = null;
+  for (const message of eventMessages) {
+    const ts = message.timestamp;
+    if (!ts) continue;
+    if (!minTimestamp || ts < minTimestamp) minTimestamp = ts;
+    if (!maxTimestamp || ts > maxTimestamp) maxTimestamp = ts;
+  }
 
   return {
     kind: "parsed",
@@ -100,8 +110,8 @@ export async function parseCodexSession(filePath: string): Promise<ParseSessionR
       reasoningSummaryText: buildReasoningSummaryText(reasoningSummaries),
       cwd,
       model,
-      startedAt: timestamps[0] ?? new Date().toISOString(),
-      endedAt: timestamps[timestamps.length - 1] ?? new Date().toISOString(),
+      startedAt: minTimestamp ?? new Date().toISOString(),
+      endedAt: maxTimestamp ?? new Date().toISOString(),
       messages: eventMessages,
     },
   };
