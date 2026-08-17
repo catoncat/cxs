@@ -233,7 +233,10 @@ impl SourceCatalog {
 fn source_file_accepted(source_id: SourceId, path: &Path) -> bool {
     let extension = path.extension().and_then(|value| value.to_str());
     match source_id {
-        SourceId::Dsh => matches!(extension, Some("jsonl" | "zstd" | "zst")),
+        // DSH sessions are always zstd-compressed; the adapter decodes every
+        // accepted file as zstd, so accepting a plain `.jsonl` here would turn
+        // format drift into a hard sync failure instead of a skip.
+        SourceId::Dsh => matches!(extension, Some("zstd" | "zst")),
         _ => extension == Some("jsonl"),
     }
 }

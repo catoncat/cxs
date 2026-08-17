@@ -130,15 +130,14 @@ pub(crate) fn project(
             }
             return Ok(());
         }
-        if let Some(candidate) = accepted_title(record)
-            && title.is_empty()
-        {
+        // Latest wins: DSH first writes a truncated paste of the first user
+        // message as the title, then replaces it with the LLM-refined title.
+        if let Some(candidate) = accepted_title(record) {
             title = candidate;
             return Ok(());
         }
-        if let Some(candidate) = accepted_model(record)
-            && model.is_empty()
-        {
+        // Latest wins: the model can switch mid-session.
+        if let Some(candidate) = accepted_model(record) {
             model = candidate;
             return Ok(());
         }
@@ -185,7 +184,16 @@ pub(crate) fn project(
     }
 
     let native_session_id = if session_id.is_empty() {
-        fallback_session_id(file)
+        // The DSH layout keeps the native id in the parent directory:
+        // <root>/<encoded-cwd>/<session-id>/session.jsonl.zstd. The shared
+        // file-stem fallback would see only "session.jsonl".
+        file.file_path
+            .parent()
+            .and_then(|parent| parent.file_name())
+            .and_then(|name| name.to_str())
+            .filter(|name| !name.is_empty())
+            .map(str::to_owned)
+            .unwrap_or_else(|| fallback_session_id(file))
     } else {
         session_id
     };
@@ -231,13 +239,14 @@ fn accepted_session(record: &Map<String, Value>) -> Option<AcceptedSession> {
         return None;
     }
     let cwd = string(record, "cwd");
-    if cwd.is_empty() {
+    let timestamp = millis_timestamp(record, "createdAt");
+    if cwd.is_empty() || timestamp.is_empty() {
         return None;
     }
     Some(AcceptedSession {
         session_id: string(record, "id"),
         cwd,
-        timestamp: millis_timestamp(record, "createdAt"),
+        timestamp,
     })
 }
 
@@ -251,13 +260,14 @@ fn accepted_user_message(record: &Map<String, Value>) -> Option<AcceptedMessage>
         return None;
     }
     let content_text = text_from_content(data.get("content")?);
-    if content_text.is_empty() {
+    let timestamp = millis_timestamp(record, "time");
+    if content_text.is_empty() || timestamp.is_empty() {
         return None;
     }
     Some(AcceptedMessage {
         role: MessageRole::User,
         content_text,
-        timestamp: millis_timestamp(record, "time"),
+        timestamp,
     })
 }
 
@@ -271,13 +281,14 @@ fn accepted_assistant_message(record: &Map<String, Value>) -> Option<AcceptedMes
         return None;
     }
     let content_text = text_from_content(message.get("content")?);
-    if content_text.is_empty() {
+    let timestamp = millis_timestamp(record, "time");
+    if content_text.is_empty() || timestamp.is_empty() {
         return None;
     }
     Some(AcceptedMessage {
         role: MessageRole::Assistant,
         content_text,
-        timestamp: millis_timestamp(record, "time"),
+        timestamp,
     })
 }
 

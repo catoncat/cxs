@@ -11,7 +11,7 @@ use crate::selector::Selector;
 
 use super::{
     FullProjectionReason, ProjectedSource, ProjectionMode, ProjectionOutcome, SourceCatalog,
-    SourceFile, SourceMetadataCache, inject_metadata_failure,
+    SourceFile, SourceMetadataCache, inject_metadata_failure, write_zstd_lines,
 };
 
 #[test]
@@ -493,9 +493,12 @@ fn dsh_adapter_accepts_real_messages_and_rejects_injected_context() {
             json!({"type":"session","version":0,"id":"session-dsh-safe","createdAt":1786870711696i64,"cwd":"/safe/dsh"}).to_string(),
             json!({"type":"session/title","seq":1,"time":1786870711696i64,"data":{"title":"accepted dsh title"}}).to_string(),
             json!({"type":"request/header","seq":2,"time":1786870711696i64,"data":{"header":{"config":{"model":"deepseek-v4-flash"}}}}).to_string(),
+            json!({"type":"session/title","seq":7,"time":1786870711701i64,"data":{"title":"refined dsh title"}}).to_string(),
+            json!({"type":"request/header","seq":8,"time":1786870711702i64,"data":{"header":{"config":{"model":"deepseek-v4-pro"}}}}).to_string(),
             json!({"type":"user/message","seq":3,"time":1786870711697i64,"data":{"source":{"kind":"user"},"role":"user","content":[{"type":"text","text":"accepted dsh user"}]}}).to_string(),
             json!({"type":"user/message","seq":4,"time":1786870711698i64,"data":{"source":{"kind":"plugin"},"role":"user","content":[{"type":"text","text":"plugin context must not leak"}]}}).to_string(),
             json!({"type":"user/message","seq":5,"time":1786870711699i64,"data":{"source":{"kind":"skill-catalog"},"role":"user","content":[{"type":"text","text":"skill catalog must not leak"}]}}).to_string(),
+            json!({"type":"user/message","seq":5,"time":1786870711712i64,"data":{"source":{"kind":"agent-instructions"},"role":"user","content":[{"type":"text","text":"agent instructions must not leak"}]}}).to_string(),
             json!({"type":"assistant/message","seq":6,"time":1786870711700i64,"data":{"message":{"role":"assistant","content":[{"type":"reasoning","text":"reasoning must not leak"},{"type":"text","text":"accepted dsh assistant"},{"type":"tool-call","name":"bash","arguments":"tool call must not leak"}]}}}).to_string(),
         ],
     );
@@ -506,8 +509,10 @@ fn dsh_adapter_accepts_real_messages_and_rejects_injected_context() {
     assert_eq!(projected.session.source_id, SourceId::Dsh);
     assert_eq!(projected.session.native_session_id, "session-dsh-safe");
     assert_eq!(projected.session.cwd, "/safe/dsh");
-    assert_eq!(projected.session.model, "deepseek-v4-flash");
-    assert_eq!(projected.session.title, "accepted dsh title");
+    // Latest wins: refined titles and mid-session model switches supersede
+    // the first records.
+    assert_eq!(projected.session.model, "deepseek-v4-pro");
+    assert_eq!(projected.session.title, "refined dsh title");
     assert!(projected.read_proof.stable());
     assert_eq!(projected.read_proof.safe_offset, scan.files[0].size);
     assert!(
@@ -521,18 +526,126 @@ fn dsh_adapter_accepts_real_messages_and_rejects_injected_context() {
     for accepted in [
         "accepted dsh user",
         "accepted dsh assistant",
-        "accepted dsh title",
+        "refined dsh title",
     ] {
         assert!(searchable.contains(accepted), "DSH lost {accepted}");
     }
     for rejected in [
+        // Superseded by the later refined title.
+        "accepted dsh title",
         "plugin context must not leak",
         "skill catalog must not leak",
+        "agent instructions must not leak",
         "reasoning must not leak",
         "tool call must not leak",
     ] {
         assert!(!searchable.contains(rejected), "DSH leaked {rejected}");
     }
+}
+
+#[test]
+fn dsh_adapter_rejects_incomplete_records() {
+    let temp = tempdir().unwrap();
+    let root = temp.path().join("dsh");
+    let session_dir = root.join("session-dsh-incomplete");
+    fs::create_dir_all(&session_dir).unwrap();
+    let file = session_dir.join("session.jsonl.zstd");
+    write_zstd_lines(
+        &file,
+        &[
+            // Missing createdAt: the session record is rejected, so identity
+            // and cwd must fall back instead of carrying an empty timestamp.
+            json!({"type":"session","version":0,"id":"session-dsh-incomplete","cwd":"/incomplete/dsh"}).to_string(),
+            // Missing record time: incomplete messages are rejected.
+            json!({"type":"user/message","seq":1,"data":{"source":{"kind":"user"},"role":"user","content":[{"type":"text","text":"timeless user must not project"}]}}).to_string(),
+            json!({"type":"assistant/message","seq":2,"data":{"message":{"role":"assistant","content":[{"type":"text","text":"timeless assistant must not project"}]}}}).to_string(),
+            json!({"type":"user/message","seq":3,"time":1786870711697i64,"data":{"source":{"kind":"user"},"role":"user","content":[{"type":"text","text":"complete dsh user"}]}}).to_string(),
+        ],
+    );
+
+    let scan = scan_all(SourceId::Dsh, &root);
+    assert_eq!(scan.files.len(), 1);
+    assert!(scan.files[0].cwd.is_empty());
+    let projected = expect_projected(project(&scan.files[0], scan.files[0].size, None));
+    // Without a session record the native id falls back to the session
+    // directory name, not the constant file stem "session.jsonl".
+    assert_eq!(
+        projected.session.native_session_id,
+        "session-dsh-incomplete"
+    );
+    assert!(projected.session.cwd.is_empty());
+    assert_eq!(projected.documents.len(), 1);
+    assert_eq!(
+        projected.documents[0].message.timestamp,
+        "2026-08-16T08:58:31.697Z"
+    );
+    assert_eq!(projected.session.started_at, "2026-08-16T08:58:31.697Z");
+
+    let searchable = serde_json::to_string(&projected).unwrap();
+    assert!(searchable.contains("complete dsh user"));
+    for rejected in [
+        "timeless user must not project",
+        "timeless assistant must not project",
+        "/incomplete/dsh",
+    ] {
+        assert!(!searchable.contains(rejected), "DSH leaked {rejected}");
+    }
+}
+
+#[test]
+fn dsh_adapter_tolerates_torn_final_frame() {
+    let temp = tempdir().unwrap();
+    let root = temp.path().join("dsh");
+    let session_dir = root.join("session-dsh-torn");
+    fs::create_dir_all(&session_dir).unwrap();
+    let file = session_dir.join("session.jsonl.zstd");
+    // A large final record forces the earlier records into completed zstd
+    // blocks, so truncating the frame tail leaves a decodable line prefix.
+    let padding = "x".repeat(200_000);
+    write_zstd_lines(
+        &file,
+        &[
+            json!({"type":"session","version":0,"id":"session-dsh-torn","createdAt":1786870711696i64,"cwd":"/torn/dsh"}).to_string(),
+            json!({"type":"user/message","seq":1,"time":1786870711697i64,"data":{"source":{"kind":"user"},"role":"user","content":[{"type":"text","text":"torn prefix user"}]}}).to_string(),
+            json!({"type":"assistant/message","seq":2,"time":1786870711698i64,"data":{"message":{"role":"assistant","content":[{"type":"text","text":padding}]}}}).to_string(),
+        ],
+    );
+    // Simulate an interrupted in-flight write: cut the compressed frame tail.
+    let bytes = fs::read(&file).unwrap();
+    fs::write(&file, &bytes[..bytes.len() - 7]).unwrap();
+
+    let scan = scan_all(SourceId::Dsh, &root);
+    assert_eq!(scan.files.len(), 1);
+    assert!(scan.failures.is_empty());
+    let projected = expect_projected(project(&scan.files[0], scan.files[0].size, None));
+    let searchable = serde_json::to_string(&projected).unwrap();
+    assert!(searchable.contains("torn prefix user"));
+    assert!(!searchable.contains(&padding));
+}
+
+#[test]
+fn dsh_adapter_rejects_corrupt_frame_header() {
+    let temp = tempdir().unwrap();
+    let root = temp.path().join("dsh");
+    let session_dir = root.join("session-dsh-corrupt");
+    fs::create_dir_all(&session_dir).unwrap();
+    let file = session_dir.join("session.jsonl.zstd");
+    write_zstd_lines(
+        &file,
+        &[
+            json!({"type":"session","version":0,"id":"session-dsh-corrupt","createdAt":1786870711696i64,"cwd":"/corrupt/dsh"}).to_string(),
+            json!({"type":"user/message","seq":1,"time":1786870711697i64,"data":{"source":{"kind":"user"},"role":"user","content":[{"type":"text","text":"corrupt frame must not project"}]}}).to_string(),
+        ],
+    );
+    // Corrupt the frame header (past the 4-byte magic): not a torn tail, so
+    // the failure must stay hard and surface as a scan failure.
+    let mut bytes = fs::read(&file).unwrap();
+    bytes[5] ^= 0xFF;
+    fs::write(&file, &bytes).unwrap();
+
+    let scan = scan_all(SourceId::Dsh, &root);
+    assert!(scan.files.is_empty());
+    assert_eq!(scan.failures.len(), 1);
 }
 
 #[test]
@@ -687,16 +800,6 @@ fn codex_line(record_type: &str, payload: Value) -> String {
 
 fn write_lines(path: &Path, lines: &[String]) {
     fs::write(path, format!("{}\n", lines.join("\n"))).unwrap();
-}
-
-fn write_zstd_lines(path: &Path, lines: &[String]) {
-    let mut encoder = zstd::stream::write::Encoder::new(Vec::new(), 0).unwrap();
-    for line in lines {
-        encoder.write_all(line.as_bytes()).unwrap();
-        encoder.write_all(b"\n").unwrap();
-    }
-    let bytes = encoder.finish().unwrap();
-    fs::write(path, bytes).unwrap();
 }
 
 fn append(path: &Path, line: &str) {

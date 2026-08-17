@@ -1,6 +1,6 @@
 ---
 name: sherlog
-description: "Search local agent-session history to recover prior decisions, commands, configurations, and context from earlier sessions. Use for cross-session recall when the current task depends on what happened in a previous agent conversation. Also use when the user asks in Chinese to recall earlier sessions (e.g. 回忆一下, 之前, 上次, 历史对话). Not for inspecting the current repository or summarizing the current session."
+description: "Search local agent-session history to recover prior decisions, commands, configurations, and context from earlier sessions. Use for cross-session recall when the current task depends on what happened in a previous agent conversation, not for inspecting the current repository or summarizing the current session."
 ---
 
 # Sherlog

@@ -248,13 +248,7 @@ fn write_dsh_zstd_session(path: &Path, id: &str, messages: &[(&str, &str)]) {
             );
         }
     }
-    let mut encoder = zstd::stream::write::Encoder::new(Vec::new(), 0).unwrap();
-    for line in lines {
-        encoder.write_all(line.as_bytes()).unwrap();
-        encoder.write_all(b"\n").unwrap();
-    }
-    let bytes = encoder.finish().unwrap();
-    std::fs::write(path, bytes).unwrap();
+    crate::sources::write_zstd_lines(path, &lines);
 }
 
 fn cached_source_file_state(file: &SourceFile, root: &Path) -> SourceFileState {
@@ -964,7 +958,7 @@ fn dsh_sync_find_read_page_round_trip() {
             "--source".to_owned(),
             "dsh".to_owned(),
             "--db".to_owned(),
-            db,
+            db.clone(),
             "--json".to_owned(),
         ],
     );
@@ -974,6 +968,43 @@ fn dsh_sync_find_read_page_round_trip() {
     assert_eq!(page["totalCount"], 2);
     assert_eq!(page["messages"][0]["contentText"], "dsh e2e query");
     assert_eq!(page["messages"][1]["contentText"], "dsh e2e answer");
+
+    let (code, stdout, stderr) = run_cli(
+        &mut services,
+        vec![
+            "shlog".to_owned(),
+            "list".to_owned(),
+            "--source".to_owned(),
+            "dsh".to_owned(),
+            "--db".to_owned(),
+            db.clone(),
+            "--json".to_owned(),
+        ],
+    );
+    assert_eq!(code, 0);
+    assert!(stderr.is_empty());
+    let list: serde_json::Value = serde_json::from_slice(&stdout).unwrap();
+    assert_eq!(list["results"].as_array().unwrap().len(), 1);
+    assert_eq!(list["results"][0]["sessionUuid"], format!("dsh:{id}"));
+    assert_eq!(list["results"][0]["messageCount"], 2);
+
+    let (code, stdout, stderr) = run_cli(
+        &mut services,
+        vec![
+            "shlog".to_owned(),
+            "stats".to_owned(),
+            "--source".to_owned(),
+            "dsh".to_owned(),
+            "--db".to_owned(),
+            db,
+            "--json".to_owned(),
+        ],
+    );
+    assert_eq!(code, 0);
+    assert!(stderr.is_empty());
+    let stats: serde_json::Value = serde_json::from_slice(&stdout).unwrap();
+    assert_eq!(stats["sessionCount"], 1);
+    assert_eq!(stats["messageCount"], 2);
 }
 
 #[test]

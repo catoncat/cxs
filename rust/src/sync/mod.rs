@@ -1187,7 +1187,13 @@ fn record_scan_failures(
 ) {
     for failure in &scan.failures {
         let path = failure.file_path.to_string_lossy().into_owned();
-        let message = format!("{}: {}", failure.operation, failure.message);
+        // SourceError Display already embeds the operation; only prepend it
+        // for bare messages that lack it.
+        let message = if failure.message.starts_with(&failure.operation) {
+            failure.message.clone()
+        } else {
+            format!("{}: {}", failure.operation, failure.message)
+        };
         if seen.insert((path.clone(), message.clone())) {
             report.record_error(path, message);
         }

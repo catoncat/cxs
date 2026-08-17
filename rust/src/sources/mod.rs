@@ -437,5 +437,20 @@ pub(crate) fn fallback_session_id(file: &SourceFile) -> String {
     format!("{stem}-{}", hex::encode(digest))
 }
 
+/// Test-only writer shared by the source adapter tests and the app e2e
+/// tests so zstd fixtures are encoded exactly one way.
+#[cfg(test)]
+pub(crate) fn write_zstd_lines(path: &std::path::Path, lines: &[String]) {
+    use std::io::Write;
+
+    let mut encoder = zstd::stream::write::Encoder::new(Vec::new(), 0).unwrap();
+    for line in lines {
+        encoder.write_all(line.as_bytes()).unwrap();
+        encoder.write_all(b"\n").unwrap();
+    }
+    let bytes = encoder.finish().unwrap();
+    std::fs::write(path, bytes).unwrap();
+}
+
 #[cfg(test)]
 mod tests;

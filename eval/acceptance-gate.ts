@@ -5,7 +5,7 @@ import { resolveCliUnderTest, runCliUnderTest, type CliUnderTest } from "./cli-u
 import { buildDogfoodScoreboard, desiredContextMode, evaluateDogfoodItem, type DogfoodEvaluation, type DogfoodScoreboard } from "./dogfood-eval-core";
 import type { DogfoodGolden } from "./dogfood-schema";
 import { measureReturnedContext, summarizeReturnedContext, type ReturnedContextMetric, type ReturnedContextSummary } from "./returned-context";
-import type { FindResult, SyncSummary } from "../src/types";
+import type { FindResult, SessionSourceId, SyncSummary } from "../src/types";
 
 const MESSAGE_HIT_SESSION = "11111111-1111-4111-8111-111111111111";
 const SESSION_HIT_SESSION = "22222222-2222-4222-8222-222222222222";
@@ -25,7 +25,11 @@ const COMMAND_EXEC_SESSION = "77777777-7777-4777-8777-777777777777";
 const COMMAND_RESTATE_SESSION = "88888888-8888-4888-8888-888888888888";
 const QUERY_WINDOW_SESSION = "99999999-9999-4999-8999-999999999999";
 
-type AcceptanceSourceId = "codex" | "claude-code" | "pi";
+// Sources with synthetic acceptance fixtures. dsh is deliberately absent:
+// its transcripts are zstd-compressed and the TS oracle stub cannot parse
+// them, so dsh coverage lives in the native Rust e2e tests instead.
+const ACCEPTANCE_SOURCE_IDS = ["codex", "claude-code", "pi"] as const;
+type AcceptanceSourceId = (typeof ACCEPTANCE_SOURCE_IDS)[number];
 
 export type AcceptanceFixtureRoots = Record<AcceptanceSourceId, string>;
 const ROOT = resolve(import.meta.dirname, "..");
@@ -113,6 +117,20 @@ export async function runAcceptanceGate(options: AcceptanceGateOptions = {}): Pr
   }
 }
 
+function acceptanceFixtureRoot(
+  roots: AcceptanceFixtureRoots,
+  sourceId: SessionSourceId,
+  caseId: string,
+): string {
+  if ((ACCEPTANCE_SOURCE_IDS as readonly string[]).includes(sourceId)) {
+    return roots[sourceId as AcceptanceSourceId];
+  }
+  throw new Error(
+    `acceptance case ${caseId} targets source "${sourceId}", which has no acceptance fixture root; ` +
+    "pass find.root explicitly or add a real fixture",
+  );
+}
+
 async function syncSource(
   cli: CliUnderTest,
   dbPath: string,
@@ -180,7 +198,7 @@ async function findViaCli(
   if (item.find?.selector) {
     args.push("--selector", JSON.stringify(item.find.selector));
   } else {
-    args.push("--root", item.find?.root ?? roots[sourceId as AcceptanceSourceId]);
+    args.push("--root", item.find?.root ?? acceptanceFixtureRoot(roots, sourceId, item.id));
     if (item.find?.cwd) args.push("--cwd", item.find.cwd);
   }
   if (item.find?.sort) args.push("--sort", item.find.sort);

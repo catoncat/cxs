@@ -130,13 +130,15 @@ Pi currently requests full replay when an existing checkpoint is offered (`Delta
 
 Implementation: `rust/src/sources/dsh.rs`.
 
-Source layout: `~/.dsh/sessions/<encoded-cwd>/<session-id>/session.jsonl.zstd`. The file is zstd-compressed JSONL; the adapter treats the compressed file as the raw source and streams decompressed records.
+Source layout: `~/.dsh/sessions/<encoded-cwd>/<session-id>/session.jsonl.zstd`. The file is zstd-compressed JSONL; the adapter treats the compressed file as the raw source and streams decompressed records. Scan accepts only `.zstd`/`.zst` files; an uncompressed `.jsonl` in the tree is skipped as format drift, not decoded.
+
+DSH session archiving is a workspace UI flag (`~/.dsh/storages/workspace.json` `archivedSessionIds`); archived session files stay in place under the sessions root, so they remain indexed and searchable. Sherlog does not read or replicate the archive flag.
 
 Accepted metadata/profile input:
 
-- `session` record with non-empty cwd and `createdAt` epoch millis -> ISO timestamp; id when available;
-- `session/title` non-empty title;
-- `request/header` non-empty `data.header.config.model`.
+- `session` record with non-empty cwd and `createdAt` epoch millis -> ISO timestamp; id when available (fallback: the session directory name);
+- latest `session/title` non-empty title (the first title is a truncated paste of the first user message; later records carry the refined title);
+- latest `request/header` non-empty `data.header.config.model` (the model can switch mid-session).
 
 Accepted message input:
 
@@ -153,6 +155,8 @@ Rejected:
 - malformed/non-object lines.
 
 DSH currently requests full replay when an existing checkpoint is offered (`DeltaUnsupported`). Raw byte locators are `0` because decompressed JSONL offsets are not linear in the compressed file; `read-*` serves text from SQLite.
+
+A torn final zstd frame (interrupted or in-flight write; DSH repairs torn tails itself) ends the decodable record stream without failing the file: the complete prefix is projected, and the next sync replays in full once the file is repaired. Any other decode failure (corrupt header, corrupt block, bad frame parameter) remains a hard per-file error.
 
 ## Derived profile fields
 
