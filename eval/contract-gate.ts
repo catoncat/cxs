@@ -509,6 +509,13 @@ function normalizeIntentionalV8Differences(
           if (isRecord(entry)) normalizeQueryOnlyCoverage(entry.coverage);
         }
       }
+      // Intentional v8 divergence: the legacy oracle still wraps non-fresh
+      // coverage into a check_coverage_then_retry nextAction, while native v8
+      // emits find nextAction only for zero-result diagnosis and surfaces the
+      // same state via coverageBySource. The dsh oracle adapter is a stub that
+      // can never be synced in this fixture, so the oracle always emits the
+      // coverage advice for the all-source and unscoped cases.
+      delete output.nextAction;
     }
   }
 
