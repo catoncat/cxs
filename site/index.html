@@ -398,7 +398,9 @@ shlog read-range &lt;sessionRef&gt; --seq &lt;matchSeq&gt;</code></pre>
 
   <script>
     async function copyCmd(button) {
-      const text = button.parentElement.querySelector('code').textContent
+      const wrap = button.parentElement;
+      const dataCopy = wrap.getAttribute('data-copy');
+      const text = dataCopy || wrap.querySelector('code').textContent
         .replace(/\\\s*\n\s*/g, ' ')
         .trim();
       try {
