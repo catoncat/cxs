@@ -6,6 +6,10 @@ on:
       - main
   pull_request:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -46,6 +50,9 @@ jobs:
 
   rust-release-binary:
     name: Rust release binary (${{ matrix.name }})
+    # native-contract already builds and exercises the Linux release candidate
+    # on PRs. Keep the full cross-platform matrix for merged main commits.
+    if: github.event_name == 'push'
     strategy:
       fail-fast: false
       matrix:
