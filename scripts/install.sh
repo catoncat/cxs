@@ -73,7 +73,7 @@ case "$kernel:$machine" in
     target=aarch64-apple-darwin
     ;;
   Darwin:x86_64 | Darwin:amd64)
-    target=x86_64-apple-darwin
+    die "Intel macOS is not supported; Sherlog requires Apple Silicon macOS"
     ;;
   Linux:x86_64 | Linux:amd64)
     for musl_loader in /lib/ld-musl-*.so.1 /usr/lib/ld-musl-*.so.1; do

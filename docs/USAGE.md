@@ -20,7 +20,7 @@ cargo build --release --locked --bin shlog
 curl -fsSL https://github.com/catoncat/sherlog/releases/latest/download/install.sh | sh
 ```
 
-声明的 native target 仅有 macOS arm64、macOS x64 与 Linux x64 GNU。Linux musl、Linux arm64 与 Windows 没有发布 archive。
+声明的 native target 仅有 macOS arm64 与 Linux x64 GNU。Intel macOS、Linux musl、Linux arm64 与 Windows 没有发布 archive。
 
 开发 checkout 中：
 

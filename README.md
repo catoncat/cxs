@@ -23,7 +23,7 @@ brew install sherlog
 
 The installer places `shlog` in `$HOME/.local/bin`, verifies SHA-256, and never runs `sudo`. Set `SHLOG_INSTALL_DIR` to pick another directory. Upgrading from 0.4.x? Run `shlog sync` once to migrate your index.
 
-Prebuilt archives for macOS (arm64, x64) and Linux (x64 GNU). Node.js is not required to run Sherlog.
+Prebuilt archives for macOS (arm64 only) and Linux (x64 GNU). Node.js is not required to run Sherlog.
 
 ## Quick Start
 

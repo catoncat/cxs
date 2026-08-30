@@ -25,7 +25,7 @@ message 与 session-profile 共用 `documents`/`documents_fts`，但 evidence pr
 - candidate-aware perf harness：可显式选择 release binary、记录 process/operation latency、RSS、artifact/DB size 和 progressive reads；默认跑确定性合成烟雾 fixture（隔离、不代表真实体积分布），本机校准必须同时显式 `--root` 和 `--db`（建议 `--skip-sync`）；附 concurrency 补充 harness；尚未有进 git 的回归基线 JSON，也尚未按真实体积分布做形状拟合语料；
 - Rust unit/integration tests：sources、index、sync、migration、retrieval、app；
 - native CI 会实际构建并检查 `target/release/shlog` 后以 `--require-candidate` 运行 contract/acceptance；release workflow 则下载 Linux GNU archive、解包并验证其中的 executable，再运行同一 gates；
-- native release workflow：macOS arm64/x64、Linux x64 GNU archives、SBOM、checksums、attestation、installer/formula。
+- native release workflow：macOS arm64、Linux x64 GNU archives、SBOM、checksums、attestation、installer/formula。
 
 ### 仍需收口
 

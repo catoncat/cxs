@@ -32,7 +32,7 @@
 - strict sync 遇到选中输入错误时不发布部分 coverage；`--best-effort` 可提交成功文件，但不会伪造 complete coverage。`--prune` 只删除 hot 与 registered cold 都不存在的同 source 投影。
 - v8 `cold_roots` 表是 cold registration 真相。legacy `cold-roots.json` 只作为首次 v7/v8 cutover 的一次性导入输入；导入后使用 tombstone 阻止旧 writer 复活配置。
 - v7 -> v8 migration 只发生在授权 writer 路径，采用 copy/verify/backup/atomic publish；read-only commands 不迁移。cold-only projection 必须保留。
-- native release pipeline 声明 `aarch64-apple-darwin`、`x86_64-apple-darwin`、`x86_64-unknown-linux-gnu` 三个目标。tag 只发 GitHub Release；Homebrew tap 与 sherlog.net 都要另走一步，步骤见「发布 / 更新闭环」。
+- native release pipeline 声明 `aarch64-apple-darwin`、`x86_64-unknown-linux-gnu` 两个目标（仅 Apple Silicon macOS）。tag 只发 GitHub Release；Homebrew tap 与 sherlog.net 都要另走一步，步骤见「发布 / 更新闭环」。
 
 不要把下面这些说成已完成：
 

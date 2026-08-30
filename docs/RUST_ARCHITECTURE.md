@@ -213,7 +213,6 @@ release workflow 只构建：
 | Platform | Rust target | 备注 |
 | --- | --- | --- |
 | macOS arm64 | `aarch64-apple-darwin` | archive + SBOM |
-| macOS x64 | `x86_64-apple-darwin` | archive + SBOM |
 | Linux x64 GNU | `x86_64-unknown-linux-gnu` | Ubuntu 22.04 build，GLIBC ceiling check |
 
 Archive 包含 executable `shlog`、`sherlog` symlink、README 与 LICENSE。release assets 还包含 SPDX SBOM、`SHA256SUMS`、installer 与 rendered Homebrew formula，并生成 provenance/SBOM attestation。
@@ -224,7 +223,7 @@ Archive 包含 executable `shlog`、`sherlog` symlink、README 与 LICENSE。rel
 - 默认写 `$HOME/.local/bin`；
 - 校验 SHA-256；
 - 可选使用 `gh attestation verify`；
-- 只接受上述三类 target；
+- 只接受上述两类 target；
 - Linux musl fail closed；
 - 覆盖已有 command 需要显式 `SHERLOG_FORCE=1`。
 

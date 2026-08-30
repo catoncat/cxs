@@ -186,8 +186,7 @@ read-only command 不会移动 legacy data dir 或触发上述流程。
 
 源码、native installer 与 release workflow 已 source-ready。声明的 archive target 只有：
 
-- macOS arm64：`aarch64-apple-darwin`
-- macOS x64：`x86_64-apple-darwin`
+- macOS arm64：`aarch64-apple-darwin`（仅 Apple Silicon）
 - Linux x64 GNU：`x86_64-unknown-linux-gnu`（非 musl）
 
 本次 cutover 尚未发布 native tag/assets，因此不能把现有 GitHub/npm release 或全局 `shlog` 当作上述 Rust build；本机全局 `shlog --version` 当前仍为旧发布版 `0.4.4`。详情见 [RUST_ARCHITECTURE.md](RUST_ARCHITECTURE.md)。

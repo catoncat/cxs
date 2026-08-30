@@ -28,9 +28,6 @@ jobs:
           - label: macOS arm64
             os: macos-15
             target: aarch64-apple-darwin
-          - label: macOS x64
-            os: macos-15-intel
-            target: x86_64-apple-darwin
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -230,7 +227,6 @@ jobs:
 
           targets=(
             aarch64-apple-darwin
-            x86_64-apple-darwin
             x86_64-unknown-linux-gnu
           )
           expected_assets=()
@@ -248,12 +244,10 @@ jobs:
           done
 
           arm_sha=$(sha256sum "release-assets/sherlog-v${version}-aarch64-apple-darwin.tar.gz" | awk '{print $1}')
-          mac_x64_sha=$(sha256sum "release-assets/sherlog-v${version}-x86_64-apple-darwin.tar.gz" | awk '{print $1}')
           linux_x64_sha=$(sha256sum "release-assets/sherlog-v${version}-x86_64-unknown-linux-gnu.tar.gz" | awk '{print $1}')
           sed \
             -e "s/__VERSION__/${version}/g" \
             -e "s/__MACOS_ARM64_SHA256__/${arm_sha}/g" \
-            -e "s/__MACOS_X64_SHA256__/${mac_x64_sha}/g" \
             -e "s/__LINUX_X64_SHA256__/${linux_x64_sha}/g" \
             Formula/sherlog.rb.template > release-assets/sherlog.rb
           if grep -Eq '__[A-Z0-9_]+__' release-assets/sherlog.rb; then

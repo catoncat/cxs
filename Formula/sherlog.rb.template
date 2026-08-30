@@ -12,11 +12,8 @@ class Sherlog < Formula
     if Hardware::CPU.arm?
       url "https://github.com/catoncat/sherlog/releases/download/v__VERSION__/sherlog-v__VERSION__-aarch64-apple-darwin.tar.gz"
       sha256 "__MACOS_ARM64_SHA256__"
-    elsif Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
-      url "https://github.com/catoncat/sherlog/releases/download/v__VERSION__/sherlog-v__VERSION__-x86_64-apple-darwin.tar.gz"
-      sha256 "__MACOS_X64_SHA256__"
     else
-      odie "Sherlog does not publish a native archive for this macOS architecture"
+      odie "Sherlog only publishes a native archive for Apple Silicon macOS"
     end
   end
 

@@ -7,7 +7,7 @@
 - [x] dogfood / eval runner 默认绑定 checkout 的 `shlog`；可用 `--cli-argv-json`、`SHLOG_CLI_ARGV_JSON` 或 `SHLOG_BIN_UNDER_TEST` 覆盖。
 - [ ] 用 release binary 跑 synthetic acceptance、contract differential、isolated perf 与 multi-source end-to-end fixture。
 - [ ] 覆盖 initial/no-op/append sync、strict/best-effort failure、status coverage、find/read/list/stats、cold add/remove/prune 和 v7 -> v8 migration。
-- [ ] 固化 macOS arm64/x64、Linux x64 GNU 的 release asset、checksum、SBOM、attestation 与 installer verification。
+- [ ] 固化 macOS arm64、Linux x64 GNU 的 release asset、checksum、SBOM、attestation 与 installer verification。
 - [ ] native tag/assets 发布前保持 source-ready 表述；发布后再验证安装态 `shlog --version`。本机全局 `shlog` 当前仍是旧发布版 `0.4.4`。
 
 ## P1: `incremental == full replay`
